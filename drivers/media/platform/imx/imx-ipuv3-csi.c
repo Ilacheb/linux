@@ -1446,11 +1446,13 @@ static int ipucsi_probe(struct platform_device *pdev)
 	ipucsi->ipu = ipu;
 	ipucsi->dev = &pdev->dev;
 	ipucsi->v4l2_dev = ipu_media_get_v4l2_dev();
-	ipucsi->v4l2_dev->notify = ipucsi_v4l2_dev_notify;
+
 	if (!ipucsi->v4l2_dev) {
 		ret = -EPROBE_DEFER;
 		goto failed;
 	}
+
+	ipucsi->v4l2_dev->notify = ipucsi_v4l2_dev_notify;
 
 	node = ipucsi_get_port(pdev->dev.parent->of_node, pdata->csi);
 	if (!node) {
