@@ -80,7 +80,7 @@ struct ipu_vdic_ctx {
 	struct vb2_alloc_ctx	*alloc_ctx;
 	struct ipu_vdic_q_data	q_data[2];
 
-	struct vb2_buffer *in_p, *in;
+	struct vb2_v4l2_buffer	*in_p, *in;
 };
 
 static struct ipu_vdic_q_data *get_q_data(struct ipu_vdic_ctx *ctx,
@@ -109,7 +109,7 @@ static void ipu_complete(void *priv, int err)
 {
 	struct ipu_vdic_dev *ipu_vdic = priv;
 	struct ipu_vdic_ctx *ctx;
-	struct vb2_buffer *dst_vb;
+	struct vb2_v4l2_buffer *dst_vb;
 	unsigned long flags;
 
 	ctx = v4l2_m2m_get_curr_priv(ipu_vdic->m2m_dev);
@@ -128,8 +128,8 @@ static void ipu_complete(void *priv, int err)
 	ctx->in_p = ctx->in;
 
 	dst_vb = v4l2_m2m_dst_buf_remove(ctx->fh.m2m_ctx);
-	dst_vb->v4l2_buf.timestamp = ctx->in->v4l2_buf.timestamp;
-	dst_vb->v4l2_buf.timecode = ctx->in->v4l2_buf.timecode;
+	dst_vb->timestamp = ctx->in->timestamp;
+	dst_vb->timecode = ctx->in->timecode;
 	v4l2_m2m_buf_done(dst_vb, err ? VB2_BUF_STATE_ERROR :
 					VB2_BUF_STATE_DONE);
 
@@ -142,7 +142,7 @@ static void device_run(void *priv)
 {
 	struct ipu_vdic_ctx *ctx = priv;
 	struct ipu_vdic_dev *ipu_vdic = ctx->ipu_vdic;
-	struct vb2_buffer *dst_buf;
+	struct vb2_v4l2_buffer *dst_buf;
 	struct ipu_vdic_q_data *q_data;
 	struct v4l2_pix_format *pix;
 	struct ipu_image image_in[3];
@@ -176,24 +176,24 @@ static void device_run(void *priv)
 		for (i = 0; i < 3; i++)
 			image_in[i].pix.bytesperline = pix->bytesperline * 2;
 
-		image_in[0].phys = vb2_dma_contig_plane_dma_addr(ctx->in_p, 0);
-		image_in[1].phys = vb2_dma_contig_plane_dma_addr(ctx->in, 0) +
+		image_in[0].phys0 = vb2_dma_contig_plane_dma_addr(&ctx->in_p->vb2_buf, 0);
+		image_in[1].phys0 = vb2_dma_contig_plane_dma_addr(&ctx->in->vb2_buf, 0) +
 			pix->bytesperline;
-		image_in[2].phys = vb2_dma_contig_plane_dma_addr(ctx->in, 0);
+		image_in[2].phys0 = vb2_dma_contig_plane_dma_addr(&ctx->in->vb2_buf, 0);
 	} else if (pix->field == V4L2_FIELD_INTERLACED_TB) {
 		for (i = 0; i < 3; i++)
 			image_in[i].pix.bytesperline = pix->bytesperline * 2;
 
-		image_in[0].phys = vb2_dma_contig_plane_dma_addr(ctx->in_p, 0) +
+		image_in[0].phys0 = vb2_dma_contig_plane_dma_addr(&ctx->in_p->vb2_buf, 0) +
 			pix->bytesperline;
-		image_in[1].phys = vb2_dma_contig_plane_dma_addr(ctx->in, 0);
-		image_in[2].phys = vb2_dma_contig_plane_dma_addr(ctx->in, 0) +
+		image_in[1].phys0 = vb2_dma_contig_plane_dma_addr(&ctx->in->vb2_buf, 0);
+		image_in[2].phys0 = vb2_dma_contig_plane_dma_addr(&ctx->in->vb2_buf, 0) +
 			pix->bytesperline;
 	} else {
-		image_in[0].phys = vb2_dma_contig_plane_dma_addr(ctx->in_p, 0) +
+		image_in[0].phys0 = vb2_dma_contig_plane_dma_addr(&ctx->in_p->vb2_buf, 0) +
 			pix->bytesperline * pix->height / 2;
-		image_in[1].phys = vb2_dma_contig_plane_dma_addr(ctx->in, 0);
-		image_in[2].phys = vb2_dma_contig_plane_dma_addr(ctx->in, 0) +
+		image_in[1].phys0 = vb2_dma_contig_plane_dma_addr(&ctx->in->vb2_buf, 0);
+		image_in[2].phys0 = vb2_dma_contig_plane_dma_addr(&ctx->in->vb2_buf, 0) +
 			pix->bytesperline * pix->height / 2;
 	}
 
@@ -208,7 +208,7 @@ static void device_run(void *priv)
 	image_out.rect.top = 0;
 	image_out.rect.width = pix->width;
 	image_out.rect.height = pix->height;
-	image_out.phys = vb2_dma_contig_plane_dma_addr(dst_buf, 0);
+	image_out.phys0 = vb2_dma_contig_plane_dma_addr(&dst_buf->vb2_buf, 0);
 
 	ipu_image_deinterlace_convert(ipu_vdic->ipu, &image_in[0], &image_in[1],
 				      &image_in[2], &image_out, ipu_complete,
@@ -390,7 +390,7 @@ static const struct v4l2_ioctl_ops ipu_vdic_ioctl_ops = {
  */
 
 static int ipu_vdic_queue_setup(struct vb2_queue *vq,
-		const struct v4l2_format *fmt,
+				void const *parg,
 		unsigned int *nbuffers,
 		unsigned int *nplanes, unsigned int sizes[],
 		void *alloc_ctxs[])
@@ -452,13 +452,13 @@ static void ipu_vdic_buf_queue(struct vb2_buffer *vb)
 {
 	struct ipu_vdic_ctx *ctx = vb2_get_drv_priv(vb->vb2_queue);
 
-	v4l2_m2m_buf_queue(ctx->fh.m2m_ctx, vb);
+	v4l2_m2m_buf_queue(ctx->fh.m2m_ctx, to_vb2_v4l2_buffer(vb));
 }
 
-static int ipu_vdic_stop_streaming(struct vb2_queue *q)
+static void ipu_vdic_stop_streaming(struct vb2_queue *q)
 {
 	struct ipu_vdic_ctx *ctx = vb2_get_drv_priv(q);
-	struct vb2_buffer *buf;
+	struct vb2_v4l2_buffer *buf;
 
 	if (q->type == V4L2_BUF_TYPE_VIDEO_OUTPUT) {
 		while ((buf = v4l2_m2m_src_buf_remove(ctx->fh.m2m_ctx)))
@@ -472,7 +472,7 @@ static int ipu_vdic_stop_streaming(struct vb2_queue *q)
 			v4l2_m2m_buf_done(buf, VB2_BUF_STATE_ERROR);
 	}
 
-	return 0;
+	return;
 }
 
 static struct vb2_ops ipu_vdic_qops = {
