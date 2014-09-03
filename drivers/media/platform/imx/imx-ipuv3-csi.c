@@ -733,7 +733,7 @@ free_irq:
 	return ret;
 }
 
-static int ipucsi_videobuf_stop_streaming(struct vb2_queue *vq)
+static void ipucsi_videobuf_stop_streaming(struct vb2_queue *vq)
 {
 	struct ipucsi *ipucsi = vq->drv_priv;
 	unsigned long flags;
@@ -760,7 +760,7 @@ static int ipucsi_videobuf_stop_streaming(struct vb2_queue *vq)
 
 	v4l2_media_subdev_s_stream(&ipucsi->subdev.entity, 0);
 
-	return 0;
+	return;
 }
 
 static void ipucsi_lock(struct vb2_queue *vq)
