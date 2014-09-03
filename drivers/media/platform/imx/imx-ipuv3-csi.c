@@ -1501,9 +1501,10 @@ static int ipucsi_probe(struct platform_device *pdev)
 		 ret, ipucsi->csi_id);
 
 	ipucsi->ipuch = ipu_idmac_get(ipu, pdata->dma[0]);
-	if (!ipucsi->ipuch)
+	if (!ipucsi->ipuch) {
 		ret = -EBUSY;
 		goto failed;
+	}
 
 	ret = ipucsi_video_device_init(pdev, ipucsi);
 	if (ret)
@@ -1546,6 +1547,7 @@ static int ipucsi_probe(struct platform_device *pdev)
 	return 0;
 
 failed:
+	ipu_media_put_v4l2_dev(ipucsi->v4l2_dev);
 	v4l2_ctrl_handler_free(&ipucsi->ctrls);
 	if (ipucsi->link)
 		ipu_media_entity_remove_link(ipucsi->link);
@@ -1569,6 +1571,7 @@ static int ipucsi_remove(struct platform_device *pdev)
 {
 	struct ipucsi *ipucsi = platform_get_drvdata(pdev);
 
+	ipu_media_put_v4l2_dev(ipucsi->v4l2_dev);
 	video_unregister_device(&ipucsi->vdev);
 	ipu_media_entity_remove_link(ipucsi->link);
 	media_entity_cleanup(&ipucsi->vdev.entity);
