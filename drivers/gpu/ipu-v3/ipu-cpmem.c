@@ -574,6 +574,8 @@ static const struct ipu_rgb def_bgra_16 = {
 
 int ipu_cpmem_set_fmt(struct ipuv3_channel *ch, u32 drm_fourcc)
 {
+	int	rc = 0;
+
 	switch (drm_fourcc) {
 	case DRM_FORMAT_YUV420:
 	case DRM_FORMAT_YVU420:
@@ -619,11 +621,11 @@ int ipu_cpmem_set_fmt(struct ipuv3_channel *ch, u32 drm_fourcc)
 		break;
 	case DRM_FORMAT_ABGR8888:
 	case DRM_FORMAT_XBGR8888:
-		ipu_cpmem_set_format_rgb(ch, &def_xbgr_32);
+		rc = ipu_cpmem_set_format_rgb(ch, &def_xbgr_32);
 		break;
 	case DRM_FORMAT_ARGB8888:
 	case DRM_FORMAT_XRGB8888:
-		ipu_cpmem_set_format_rgb(ch, &def_xrgb_32);
+		rc = ipu_cpmem_set_format_rgb(ch, &def_xrgb_32);
 		break;
 	case DRM_FORMAT_RGBA8888:
 	case DRM_FORMAT_RGBX8888:
@@ -634,16 +636,16 @@ int ipu_cpmem_set_fmt(struct ipuv3_channel *ch, u32 drm_fourcc)
 		ipu_cpmem_set_format_rgb(ch, &def_bgrx_32);
 		break;
 	case DRM_FORMAT_BGR888:
-		ipu_cpmem_set_format_rgb(ch, &def_bgr_24);
+		rc = ipu_cpmem_set_format_rgb(ch, &def_bgr_24);
 		break;
 	case DRM_FORMAT_RGB888:
-		ipu_cpmem_set_format_rgb(ch, &def_rgb_24);
+		rc = ipu_cpmem_set_format_rgb(ch, &def_rgb_24);
 		break;
 	case DRM_FORMAT_RGB565:
-		ipu_cpmem_set_format_rgb(ch, &def_rgb_16);
+		rc = ipu_cpmem_set_format_rgb(ch, &def_rgb_16);
 		break;
 	case DRM_FORMAT_BGR565:
-		ipu_cpmem_set_format_rgb(ch, &def_bgr_16);
+		rc = ipu_cpmem_set_format_rgb(ch, &def_bgr_16);
 		break;
 	case DRM_FORMAT_ARGB1555:
 		ipu_cpmem_set_format_rgb(ch, &def_argb_16);
@@ -664,7 +666,7 @@ int ipu_cpmem_set_fmt(struct ipuv3_channel *ch, u32 drm_fourcc)
 		return -EINVAL;
 	}
 
-	return 0;
+	return rc;
 }
 EXPORT_SYMBOL_GPL(ipu_cpmem_set_fmt);
 
@@ -672,6 +674,8 @@ int ipu_cpmem_set_image(struct ipuv3_channel *ch, struct ipu_image *image)
 {
 	struct v4l2_pix_format *pix = &image->pix;
 	int offset, u_offset, v_offset;
+	int rc;
+	int fourcc;
 
 	pr_debug("%s: resolution: %dx%d stride: %d\n",
 		 __func__, pix->width, pix->height,
@@ -680,7 +684,13 @@ int ipu_cpmem_set_image(struct ipuv3_channel *ch, struct ipu_image *image)
 	ipu_cpmem_set_resolution(ch, image->rect.width, image->rect.height);
 	ipu_cpmem_set_stride(ch, pix->bytesperline);
 
-	ipu_cpmem_set_fmt(ch, v4l2_pix_fmt_to_drm_fourcc(pix->pixelformat));
+	fourcc = v4l2_pix_fmt_to_drm_fourcc(pix->pixelformat);
+	if (fourcc < 0)
+		return fourcc;
+
+	rc = ipu_cpmem_set_fmt(ch, fourcc);
+	if (rc < 0)
+		return rc;
 
 	switch (pix->pixelformat) {
 	case V4L2_PIX_FMT_YUV420:
