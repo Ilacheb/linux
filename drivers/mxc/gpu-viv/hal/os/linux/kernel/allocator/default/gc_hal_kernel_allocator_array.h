@@ -25,17 +25,8 @@ _DefaultAlloctorInit(
     OUT gckALLOCATOR * Allocator
     );
 
-extern gceSTATUS
-_CMAFSLAlloctorInit(
-    IN gckOS Os,
-    OUT gckALLOCATOR * Allocator
-    );
-
 gcsALLOCATOR_DESC allocatorArray[] =
 {
     /* Default allocator. */
     gcmkDEFINE_ALLOCATOR_DESC("default", _DefaultAlloctorInit),
-#if LINUX_CMA_FSL
-    gcmkDEFINE_ALLOCATOR_DESC("cmafsl", _CMAFSLAlloctorInit),
-#endif
 };
