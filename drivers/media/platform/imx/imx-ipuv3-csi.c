@@ -1034,6 +1034,7 @@ static int ipucsi_g_fmt(struct file *file, void *fh,
 		return -EINVAL;
 
 	*f = ipucsi->format;
+	f->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
 	return 0;
 }
@@ -1474,7 +1475,6 @@ static int ipucsi_video_device_init(struct platform_device *pdev,
 	vdev->ioctl_ops	= &ipucsi_capture_ioctl_ops;
 	vdev->v4l2_dev	= ipucsi->v4l2_dev;
 	vdev->minor	= -1;
-	vdev->release	= video_device_release_empty;
 	vdev->lock	= &ipucsi->mutex;
 	vdev->ctrl_handler = &ipucsi->ctrls_vdev;
 	vdev->queue	= &ipucsi->vb2_vidq;
