@@ -17,7 +17,6 @@
 #include <linux/moduleparam.h>
 #include <linux/interrupt.h>
 #include <linux/videodev2.h>
-#include <linux/workqueue.h>
 #include <linux/version.h>
 #include <linux/device.h>
 #include <linux/kernel.h>
@@ -1441,6 +1440,7 @@ static int ipucsi_subdev_init(struct ipucsi *ipucsi, struct device_node *node)
 	endpoint = of_get_next_child(node, NULL);
 	if (endpoint)
 		v4l2_of_parse_endpoint(endpoint, &ipucsi->endpoint);
+	of_node_put(endpoint);
 
 	ipucsi->subdev.entity.ops = &ipucsi_entity_ops;
 
@@ -1454,13 +1454,10 @@ static int ipucsi_subdev_init(struct ipucsi *ipucsi, struct device_node *node)
 		return ret;
 
 	ret = v4l2_device_register_subdev(ipucsi->v4l2_dev, &ipucsi->subdev);
-	if (ret < 0)
+	if (ret < 0) {
+		media_entity_cleanup(&ipucsi->subdev.entity);
 		return ret;
-
-	ret = v4l2_device_register_subdev_node(ipucsi->v4l2_dev,
-					       &ipucsi->subdev);
-	if (ret < 0)
-		return ret;
+	}
 
 	return 0;
 }
@@ -1487,7 +1484,7 @@ static int ipucsi_video_device_init(struct platform_device *pdev,
 	ipucsi->media_pad.flags = MEDIA_PAD_FL_SINK;
 	ret = media_entity_init(&vdev->entity, 1, &ipucsi->media_pad, 0);
 	if (ret < 0)
-		video_device_release(vdev);
+		video_device_release_empty(vdev);
 
 	return ret;
 }
@@ -1520,6 +1517,7 @@ static int ipucsi_vb2_init(struct ipucsi *ipucsi)
 static int ipucsi_async_init(struct ipucsi *ipucsi, struct device_node *node)
 {
 	struct device_node *rp;
+	int rc;
 
 	rp = of_get_next_child(node, NULL);
 	if (!rp)
@@ -1529,8 +1527,9 @@ static int ipucsi_async_init(struct ipucsi *ipucsi, struct device_node *node)
 			MEDIA_LNK_FL_IMMUTABLE | MEDIA_LNK_FL_ENABLED);
 
 	if (IS_ERR(ipucsi->link)) {
+		rc = PTR_ERR(ipucsi->link);
 		ipucsi->link = NULL;
-		return PTR_ERR(ipucsi->link);
+		return rc;
 	}
 	return 0;
 }
@@ -1555,7 +1554,7 @@ static int ipucsi_probe(struct platform_device *pdev)
 	struct ipucsi *ipucsi;
 	struct resource *res;
 	int ret;
-	struct device_node *node;
+	struct device_node *node = NULL;
 
 	pdev->dev.dma_mask = &camera_mask,
 	pdev->dev.coherent_dma_mask = DMA_BIT_MASK(32),
@@ -1646,8 +1645,6 @@ static int ipucsi_probe(struct platform_device *pdev)
 	if (ret)
 		goto failed;
 
-	of_node_put(node);
-
 	platform_set_drvdata(pdev, ipucsi);
 
 	ret = video_register_device(&ipucsi->vdev, VFL_TYPE_GRABBER, -1);
@@ -1660,15 +1657,19 @@ static int ipucsi_probe(struct platform_device *pdev)
 	if (ret < 0)
 		goto failed_video;
 
+	of_node_put(node);
 	dev_info(&pdev->dev, "loaded\n");
 
 	return 0;
 
+	/* TODO: remove subdev->vdev link */
 failed_video:
 
 	video_unregister_device(&ipucsi->vdev);
 failed:
+	media_entity_remove_links(&ipucsi->subdev.entity);
 	ipu_media_put_v4l2_dev(ipucsi->v4l2_dev);
+	of_node_put(node);
 	v4l2_ctrl_handler_free(&ipucsi->ctrls);
 	if (ipucsi->link)
 		ipu_media_entity_remove_link(ipucsi->link);
@@ -1692,16 +1693,27 @@ static int ipucsi_remove(struct platform_device *pdev)
 {
 	struct ipucsi *ipucsi = platform_get_drvdata(pdev);
 
-	ipu_media_put_v4l2_dev(ipucsi->v4l2_dev);
-	video_unregister_device(&ipucsi->vdev);
-	ipu_media_entity_remove_link(ipucsi->link);
+	if (ipucsi->link)
+		/* can be NULL for unused CSI devices */
+		ipu_media_entity_remove_link(ipucsi->link);
+	v4l2_device_unregister_subdev(&ipucsi->subdev);
+	media_entity_cleanup(&ipucsi->subdev.entity);
+
+	media_entity_remove_links(&ipucsi->vdev.entity);
 	media_entity_cleanup(&ipucsi->vdev.entity);
+	media_device_unregister_entity(&ipucsi->vdev.entity);
+	video_unregister_device(&ipucsi->vdev);
+
+	vb2_queue_release(&ipucsi->vb2_vidq);
 	vb2_dma_contig_cleanup_ctx(ipucsi->alloc_ctx);
 	ipu_idmac_put(ipucsi->ipuch);
 	v4l2_ctrl_handler_free(&ipucsi->ctrls);
 
+	ipu_media_put_v4l2_dev(ipucsi->v4l2_dev);
 	ipu_smfc_put(ipucsi->smfc);
 	ipu_csi_put(ipucsi->csi);
+
+	mutex_destroy(&ipucsi->mutex);
 
 	return 0;
 }
