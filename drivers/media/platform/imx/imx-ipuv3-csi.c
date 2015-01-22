@@ -159,7 +159,7 @@ static struct ipucsi_format ipucsi_formats[] = {
 	{
 		.name = "Monochrome 8 bit",
 		.fourcc = V4L2_PIX_FMT_GREY,
-		.mbus_code = V4L2_MBUS_FMT_Y8_1X8,
+		.mbus_code = MEDIA_BUS_FMT_Y8_1X8,
 		.sens_conf = CSI_SENS_CONF_DATA_FMT_GENERIC | CSI_SENS_CONF_DATA_WIDTH_8,
 		.bytes_per_pixel = 1,
 		.bytes_per_sample = 1,
@@ -167,7 +167,7 @@ static struct ipucsi_format ipucsi_formats[] = {
 	}, {
 		.name = "Monochrome 10 bit",
 		.fourcc = V4L2_PIX_FMT_Y10,
-		.mbus_code = V4L2_MBUS_FMT_Y10_1X10,
+		.mbus_code = MEDIA_BUS_FMT_Y10_1X10,
 		.sens_conf = CSI_SENS_CONF_DATA_FMT_GENERIC | CSI_SENS_CONF_DATA_WIDTH_10,
 		.bytes_per_pixel = 2,
 		.bytes_per_sample = 2,
@@ -175,7 +175,7 @@ static struct ipucsi_format ipucsi_formats[] = {
 	}, {
 		.name = "Monochrome 12 bit",
 		.fourcc = V4L2_PIX_FMT_Y16,
-		.mbus_code = V4L2_MBUS_FMT_Y12_1X12,
+		.mbus_code = MEDIA_BUS_FMT_Y12_1X12,
 		.sens_conf = CSI_SENS_CONF_DATA_FMT_GENERIC | CSI_SENS_CONF_DATA_WIDTH_16,
 		.bytes_per_pixel = 2,
 		.bytes_per_sample = 2,
@@ -183,7 +183,7 @@ static struct ipucsi_format ipucsi_formats[] = {
 	}, {
 		.name = "UYUV 2x8 bit",
 		.fourcc = V4L2_PIX_FMT_UYVY,
-		.mbus_code = V4L2_MBUS_FMT_UYVY8_2X8,
+		.mbus_code = MEDIA_BUS_FMT_UYVY8_2X8,
 		.sens_conf = CSI_SENS_CONF_DATA_FMT_YUV422_UYVY | CSI_SENS_CONF_DATA_WIDTH_8,
 		.bytes_per_pixel = 2,
 		.bytes_per_sample = 1,
@@ -191,7 +191,7 @@ static struct ipucsi_format ipucsi_formats[] = {
 	}, {
 		.name = "YUYV 2x8 bit",
 		.fourcc = V4L2_PIX_FMT_YUYV,
-		.mbus_code = V4L2_MBUS_FMT_YUYV8_2X8,
+		.mbus_code = MEDIA_BUS_FMT_YUYV8_2X8,
 		.sens_conf = CSI_SENS_CONF_DATA_FMT_YUV422_YUYV | CSI_SENS_CONF_DATA_WIDTH_8,
 		.bytes_per_pixel = 2,
 		.bytes_per_sample = 1,
@@ -199,7 +199,7 @@ static struct ipucsi_format ipucsi_formats[] = {
 	}, {
 		.name = "UYUV 1x16 bit",
 		.fourcc = V4L2_PIX_FMT_UYVY,
-		.mbus_code = V4L2_MBUS_FMT_UYVY8_1X16,
+		.mbus_code = MEDIA_BUS_FMT_UYVY8_1X16,
 		.sens_conf = CSI_SENS_CONF_DATA_FMT_GENERIC | CSI_SENS_CONF_DATA_WIDTH_16,
 		.bytes_per_pixel = 2,
 		.bytes_per_sample = 2,
@@ -207,7 +207,7 @@ static struct ipucsi_format ipucsi_formats[] = {
 	}, {
 		.name = "YUYV 1x16 bit",
 		.fourcc = V4L2_PIX_FMT_YUYV,
-		.mbus_code = V4L2_MBUS_FMT_YUYV8_1X16,
+		.mbus_code = MEDIA_BUS_FMT_YUYV8_1X16,
 		.sens_conf = CSI_SENS_CONF_DATA_FMT_GENERIC | CSI_SENS_CONF_DATA_WIDTH_16,
 		.bytes_per_pixel = 2,
 		.bytes_per_sample = 2,
@@ -218,7 +218,7 @@ static struct ipucsi_format ipucsi_formats[] = {
 static struct ipucsi_format ipucsi_format_testpattern = {
 	.name = "RGB888 32bit",
 	.fourcc = V4L2_PIX_FMT_RGB32,
-	.mbus_code = V4L2_MBUS_FMT_FIXED,
+	.mbus_code = MEDIA_BUS_FMT_FIXED,
 	.sens_conf = CSI_SENS_CONF_DATA_FMT_GENERIC | CSI_SENS_CONF_DATA_WIDTH_12,
 	.bytes_per_pixel = 4,
 	.bytes_per_sample = 4,
