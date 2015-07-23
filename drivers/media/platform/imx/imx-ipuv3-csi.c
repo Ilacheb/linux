@@ -1120,27 +1120,28 @@ static int ipucsi_enum_fmt(struct file *file, void *priv,
 }
 
 static struct v4l2_mbus_framefmt *
-__ipucsi_get_pad_format(struct ipucsi *ipucsi, struct v4l2_subdev_fh *fh,
-			unsigned int pad, u32 which)
+__ipucsi_get_pad_format(struct ipucsi *ipucsi,
+			struct v4l2_subdev_pad_config *cfg,
+			struct v4l2_subdev_format *sdformat)
 {
-	switch (which) {
+	switch (sdformat->which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
-		return v4l2_subdev_get_try_format(fh, pad);
+		return v4l2_subdev_get_try_format(&ipucsi->subdev, cfg,
+						  sdformat->pad);
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
-		return &ipucsi->format_mbus[pad];
+		return &ipucsi->format_mbus[sdformat->pad];
 	default:
 		return NULL;
 	}
 }
 
 static int ipucsi_subdev_get_format(struct v4l2_subdev *subdev,
-		struct v4l2_subdev_fh *fh,
-		struct v4l2_subdev_format *sdformat)
+				    struct v4l2_subdev_pad_config *cfg,
+				    struct v4l2_subdev_format *sdformat)
 {
 	struct ipucsi *ipucsi = container_of(subdev, struct ipucsi, subdev);
 
-	sdformat->format = *__ipucsi_get_pad_format(ipucsi, fh, sdformat->pad,
-						sdformat->which);
+	sdformat->format = *__ipucsi_get_pad_format(ipucsi, cfg, sdformat);
 	return 0;
 }
 
@@ -1162,8 +1163,8 @@ static struct ipucsi_format *ipucsi_find_subdev_format(const u32 *fourcc,
 }
 
 static int ipucsi_subdev_set_format(struct v4l2_subdev *subdev,
-		struct v4l2_subdev_fh *fh,
-		struct v4l2_subdev_format *sdformat)
+				    struct v4l2_subdev_pad_config *cfg,
+				    struct v4l2_subdev_format *sdformat)
 {
 	struct ipucsi *ipucsi = container_of(subdev, struct ipucsi, subdev);
 	struct v4l2_mbus_framefmt *mbusformat;
@@ -1177,8 +1178,7 @@ static int ipucsi_subdev_set_format(struct v4l2_subdev *subdev,
 	width = clamp_t(unsigned int, sdformat->format.width, 16, 8192);
 	height = clamp_t(unsigned int, sdformat->format.height, 16, 4096);
 
-	mbusformat = __ipucsi_get_pad_format(ipucsi, fh, sdformat->pad,
-					    sdformat->which);
+	mbusformat = __ipucsi_get_pad_format(ipucsi, cfg, sdformat);
 	mbusformat->width = width;
 	mbusformat->height = height;
 	mbusformat->code = ipucsiformat->mbus_code;
