@@ -1495,6 +1495,7 @@ static int ipucsi_subdev_init(struct ipucsi *ipucsi, struct device_node *node)
 
 	v4l2_subdev_init(&ipucsi->subdev, &ipucsi_subdev_ops);
 
+	ipucsi->subdev.dev = ipucsi->dev;
 	ipucsi->subdev.ctrl_handler = &ipucsi->ctrls;
 
 	snprintf(ipucsi->subdev.name, sizeof(ipucsi->subdev.name), "%s-sd",
@@ -1543,6 +1544,7 @@ static int ipucsi_video_device_init(struct platform_device *pdev,
 	vdev->fops	= &ipucsi_capture_fops;
 	vdev->ioctl_ops	= &ipucsi_capture_ioctl_ops;
 	vdev->v4l2_dev	= ipucsi->v4l2_dev;
+	vdev->dev_parent = &pdev->dev;
 	vdev->minor	= -1;
 	vdev->lock	= &ipucsi->mutex;
 	vdev->ctrl_handler = &ipucsi->ctrls_vdev;
@@ -1794,6 +1796,7 @@ static int ipucsi_remove(struct platform_device *pdev)
 
 static struct platform_driver ipucsi_driver = {
 	.driver = {
+		.owner = THIS_MODULE,
 		.name = DRIVER_NAME,
 	},
 	.probe = ipucsi_probe,
