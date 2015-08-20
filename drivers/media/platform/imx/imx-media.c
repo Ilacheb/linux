@@ -37,14 +37,18 @@ struct ipu_media_link {
 	int padno;
 	struct device_node		*endpoint;
 	u32				media_link_flags;
+	bool				completed;
 };
 
 static int ipu_media_bound(struct v4l2_async_notifier *notifier,
 			   struct v4l2_subdev *sd,
 			   struct v4l2_async_subdev *asd)
 {
-	struct ipu_media_link *link = container_of(notifier,
-						   struct ipu_media_link, asn);
+	struct ipu_media_link		*link =
+		container_of(notifier, struct ipu_media_link, asn);
+	struct ipu_media_controller	*ctl =
+		container_of(notifier->v4l2_dev, struct ipu_media_controller,
+			     v4l2_dev);
 	struct device_node *rp;
 	uint32_t portno;
 	int ret;
@@ -59,14 +63,46 @@ static int ipu_media_bound(struct v4l2_async_notifier *notifier,
 	if (ret)
 		return ret;
 
+	ret = v4l2_device_register_subdev_node(&ctl->v4l2_dev, sd);
+	if (ret < 0) {
+		media_entity_remove_links(&sd->entity);
+		return ret;
+	}
+
 	v4l2_info(link->sd, "bound and linked sensor '%s'\n", sd->name);
 
 	return 0;
 }
 
+static void ipu_media_unbind(struct v4l2_async_notifier *notifier,
+			    struct v4l2_subdev *sd,
+			    struct v4l2_async_subdev *asd)
+{
+	struct ipu_media_link *link = container_of(notifier,
+						   struct ipu_media_link, asn);
+
+	v4l2_info(link->sd, "unbinding sensor '%s'...\n", sd->name);
+
+	if (sd->devnode) {
+		video_unregister_device(sd->devnode);
+		sd->devnode = NULL;
+	}
+
+	media_entity_remove_links(&sd->entity);
+}
+
 static int ipu_media_complete(struct v4l2_async_notifier *notifier)
 {
-	return v4l2_device_register_subdev_nodes(notifier->v4l2_dev);
+	struct ipu_media_link		*link =
+		container_of(notifier, struct ipu_media_link, asn);
+	struct ipu_media_controller	*ctl =
+		container_of(notifier->v4l2_dev, struct ipu_media_controller,
+			     v4l2_dev);
+
+	WARN_ON(link->completed);
+	link->completed = true;
+
+	return v4l2_device_register_subdev_node(&ctl->v4l2_dev, link->sd);
 }
 
 struct ipu_media_link *ipu_media_entity_create_link(struct v4l2_subdev *sd,
@@ -109,6 +145,7 @@ struct ipu_media_link *ipu_media_entity_create_link(struct v4l2_subdev *sd,
 	link->asdp = &link->asd;
 
 	link->asn.bound = ipu_media_bound;
+	link->asn.unbind = ipu_media_unbind;
 	link->asn.complete = ipu_media_complete;
 	link->asn.subdevs = &link->asdp;
 	link->asn.num_subdevs = 1;
@@ -166,13 +203,16 @@ void ipu_media_put_v4l2_dev(struct v4l2_device *v4l2_dev)
 }
 EXPORT_SYMBOL_GPL(ipu_media_put_v4l2_dev);
 
-int ipu_media_device_register(struct device *dev)
+int ipu_media_device_register(struct device *dev, unsigned int num_links)
 {
 	struct media_device *mdev;
 	int ret;
 
 	if (ipu_media)
 		return -EBUSY;
+
+	if (!num_links)
+		return -ENOENT;
 
 	ipu_media = devm_kzalloc(dev, sizeof(*ipu_media), GFP_KERNEL);
 	if (!ipu_media)

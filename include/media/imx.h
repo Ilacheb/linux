@@ -17,10 +17,11 @@ void ipu_media_put_v4l2_dev(struct v4l2_device *v4l2_dev);
 struct media_device *ipu_find_media_device(void);
 
 #if IS_ENABLED(CONFIG_MEDIA_IMX)
-int ipu_media_device_register(struct device *dev);
+int ipu_media_device_register(struct device *dev, unsigned int num_links);
 int ipu_media_device_unregister(struct device *dev);
 #else
-static inline int ipu_media_device_register(struct device *dev)
+static inline int ipu_media_device_register(struct device *dev,
+					    unsigned int num_links)
 {
 	return -EINVAL;
 }
