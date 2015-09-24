@@ -72,7 +72,7 @@ static const struct dmfc_channel_data dmfcdata[] = {
 		.eot_shift	= 20,
 		.max_fifo_lines	= 3,
 	}, {
-		.ipu_channel	= 24,
+		.ipu_channel	= IPUV3_CHANNEL_MEM_BG_ASYNC,
 		.channel_reg	= DMFC_DP_CHAN,
 		.shift		= DMFC_DP_CHAN_6B_24,
 		.eot_shift	= 22,
@@ -90,7 +90,7 @@ static const struct dmfc_channel_data dmfcdata[] = {
 		.eot_shift	= 16,
 		.max_fifo_lines	= 2,
 	}, {
-		.ipu_channel	= 29,
+		.ipu_channel	= IPUV3_CHANNEL_MEM_FG_ASYNC,
 		.channel_reg	= DMFC_DP_CHAN,
 		.shift		= DMFC_DP_CHAN_6F_29,
 		.eot_shift	= 23,
