@@ -83,6 +83,10 @@
 #define DC_WR_CH_CONF_PROG_DISP_ID(i)		(((i) & 0x1) << 3)
 
 #define IPU_DC_NUM_CHANNELS	10
+/* the number of mapping units; see IPUx_DC_MAP_CONF_{15..26} */
+#define IPU_DC_NUM_MAPS		24
+/* the (maximum) number of mapping pointers; see IPUx_DC_MAP_CONF_{0..14} */
+#define IPU_DC_NUM_MAP_PNTR	30
 
 struct ipu_dc_priv;
 
@@ -115,6 +119,47 @@ struct ipu_dc_priv {
 	int			dc_irq;
 	int			dp_irq;
 	int			use_count;
+};
+
+/* corresponds to IPUx_DC_MAP_CONF_{15..26} entry */
+struct ipu_dc_map_conf {
+	unsigned int	offset:5;
+	unsigned int	mask:8;
+};
+
+typedef struct ipu_dc_map_conf		ipu_dc_map_ptr_t[3];
+
+static ipu_dc_map_ptr_t const		IPU_DC_MAPPINGS[] = {
+	[IPU_DC_MAP_RGB24] = {
+		[0] = {  7, 0xff }, /* blue */
+		[1] = { 15, 0xff }, /* green */
+		[2] = { 23, 0xff }, /* red */
+	},
+	[IPU_DC_MAP_RGB565] = {
+		[0] = {  4, 0xf8 }, /* blue */
+		[1] = { 10, 0xfc }, /* green */
+		[2] = { 15, 0xf8 }, /* red */
+	},
+	[IPU_DC_MAP_GBR24] = {
+		[2] = { 15, 0xff }, /* green */
+		[1] = {  7, 0xff }, /* blue */
+		[0] = { 23, 0xff }, /* red */
+	},
+	[IPU_DC_MAP_BGR666] = {
+		[0] = {  5, 0xfc }, /* blue */
+		[1] = { 11, 0xfc }, /* green */
+		[2] = { 17, 0xfc }, /* red */
+	},
+	[IPU_DC_MAP_LVDS666] = {
+		[0] = {   5, 0xfc}, /* blue */
+		[1] = {  13, 0xfc}, /* green */
+		[2] = {  21, 0xfc}, /* red */
+	},
+	[IPU_DC_MAP_BGR24] = {
+		[2] = {  7, 0xff }, /* red */
+		[1] = { 15, 0xff }, /* green */
+		[0] = { 23, 0xff }, /* blue */
+	},
 };
 
 static void dc_link_event(struct ipu_dc *dc, int event, int addr, int priority)
@@ -349,6 +394,28 @@ static void ipu_dc_map_clear(struct ipu_dc_priv *priv, int map)
 		     priv->dc_reg + DC_MAP_CONF_PTR(map));
 }
 
+static int ipu_dc_register_mappings(struct ipu_dc_priv *priv)
+{
+	size_t			i;
+
+	BUILD_BUG_ON(ARRAY_SIZE(IPU_DC_MAPPINGS) > IPU_DC_NUM_MAP_PNTR);
+
+	for (i = 0; i < ARRAY_SIZE(IPU_DC_MAPPINGS); ++i) {
+		ipu_dc_map_ptr_t const	*setup = &IPU_DC_MAPPINGS[i];
+		size_t			j;
+
+		ipu_dc_map_clear(priv, i);
+
+		for (j = 0; j < ARRAY_SIZE(*setup); ++j) {
+			ipu_dc_map_config(priv, i, j,
+					  (*setup)[j].offset,
+					  (*setup)[j].mask);
+		}
+	}
+
+	return 0;
+}
+
 struct ipu_dc *ipu_dc_get(struct ipu_soc *ipu, int channel)
 {
 	struct ipu_dc_priv *priv = ipu->dc_priv;
@@ -442,43 +509,10 @@ int ipu_dc_init(struct ipu_soc *ipu, struct device *dev,
 	dev_dbg(dev, "DC base: 0x%08lx template base: 0x%08lx\n",
 			base, template_base);
 
-	/* rgb24 */
-	ipu_dc_map_clear(priv, IPU_DC_MAP_RGB24);
-	ipu_dc_map_config(priv, IPU_DC_MAP_RGB24, 0, 7, 0xff); /* blue */
-	ipu_dc_map_config(priv, IPU_DC_MAP_RGB24, 1, 15, 0xff); /* green */
-	ipu_dc_map_config(priv, IPU_DC_MAP_RGB24, 2, 23, 0xff); /* red */
+	ret = ipu_dc_register_mappings(priv);
+	/* TODO: handle error? */
 
-	/* rgb565 */
-	ipu_dc_map_clear(priv, IPU_DC_MAP_RGB565);
-	ipu_dc_map_config(priv, IPU_DC_MAP_RGB565, 0, 4, 0xf8); /* blue */
-	ipu_dc_map_config(priv, IPU_DC_MAP_RGB565, 1, 10, 0xfc); /* green */
-	ipu_dc_map_config(priv, IPU_DC_MAP_RGB565, 2, 15, 0xf8); /* red */
-
-	/* gbr24 */
-	ipu_dc_map_clear(priv, IPU_DC_MAP_GBR24);
-	ipu_dc_map_config(priv, IPU_DC_MAP_GBR24, 2, 15, 0xff); /* green */
-	ipu_dc_map_config(priv, IPU_DC_MAP_GBR24, 1, 7, 0xff); /* blue */
-	ipu_dc_map_config(priv, IPU_DC_MAP_GBR24, 0, 23, 0xff); /* red */
-
-	/* bgr666 */
-	ipu_dc_map_clear(priv, IPU_DC_MAP_BGR666);
-	ipu_dc_map_config(priv, IPU_DC_MAP_BGR666, 0, 5, 0xfc); /* blue */
-	ipu_dc_map_config(priv, IPU_DC_MAP_BGR666, 1, 11, 0xfc); /* green */
-	ipu_dc_map_config(priv, IPU_DC_MAP_BGR666, 2, 17, 0xfc); /* red */
-
-	/* lvds666 */
-	ipu_dc_map_clear(priv, IPU_DC_MAP_LVDS666);
-	ipu_dc_map_config(priv, IPU_DC_MAP_LVDS666, 0, 5, 0xfc); /* blue */
-	ipu_dc_map_config(priv, IPU_DC_MAP_LVDS666, 1, 13, 0xfc); /* green */
-	ipu_dc_map_config(priv, IPU_DC_MAP_LVDS666, 2, 21, 0xfc); /* red */
-
-	/* bgr24 */
-	ipu_dc_map_clear(priv, IPU_DC_MAP_BGR24);
-	ipu_dc_map_config(priv, IPU_DC_MAP_BGR24, 2, 7, 0xff); /* red */
-	ipu_dc_map_config(priv, IPU_DC_MAP_BGR24, 1, 15, 0xff); /* green */
-	ipu_dc_map_config(priv, IPU_DC_MAP_BGR24, 0, 23, 0xff); /* blue */
-
-	return 0;
+	return ret;
 }
 
 void ipu_dc_exit(struct ipu_soc *ipu)
