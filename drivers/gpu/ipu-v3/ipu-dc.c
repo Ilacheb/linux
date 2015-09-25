@@ -369,34 +369,63 @@ void ipu_dc_disable(struct ipu_soc *ipu)
 }
 EXPORT_SYMBOL_GPL(ipu_dc_disable);
 
-static void ipu_dc_map_config(struct ipu_dc_priv *priv, enum ipu_dc_map map,
-		int byte_num, int offset, int mask)
+/* Try to lookup [offset, mask] pair in priv->maps[] and create a new entry
+ * when not found.  Returns index of pair or -ENOMEM when all slots are
+ * already used. */
+static int ipu_dc_add_mapping(struct ipu_dc_priv *priv,
+			      struct ipu_dc_map_conf maps[],
+			      unsigned long *maps_used_field,
+			      struct ipu_dc_map_conf const *setup)
 {
-	int ptr = map * 3 + byte_num;
-	u32 reg;
+	unsigned int const	offset = setup->offset;
+	unsigned int const	mask = setup->mask;
+	unsigned int		idx = 0;
+	struct ipu_dc_map_conf	*map = NULL;
 
-	reg = readl(priv->dc_reg + DC_MAP_CONF_VAL(ptr));
-	reg &= ~(0xffff << (16 * (ptr & 0x1)));
-	reg |= ((offset << 8) | mask) << (16 * (ptr & 0x1));
-	writel(reg, priv->dc_reg + DC_MAP_CONF_VAL(ptr));
+	for_each_set_bit(idx, maps_used_field, IPU_DC_NUM_MAPS) {
+		if (maps[idx].offset == offset && maps[idx].mask == mask) {
+			/* map entry @idx is used and matching; assign map and
+			 * abort loop */
+			map = &maps[idx];
+			break;
+		}
+	}
 
-	reg = readl(priv->dc_reg + DC_MAP_CONF_PTR(map));
-	reg &= ~(0x1f << ((16 * (map & 0x1)) + (5 * byte_num)));
-	reg |= ptr << ((16 * (map & 0x1)) + (5 * byte_num));
-	writel(reg, priv->dc_reg + DC_MAP_CONF_PTR(map));
-}
+	if (!map) {
+		idx = find_first_zero_bit(maps_used_field, IPU_DC_NUM_MAPS);
+		if (idx < IPU_DC_NUM_MAPS) {
+			map = &maps[idx];
 
-static void ipu_dc_map_clear(struct ipu_dc_priv *priv, int map)
-{
-	u32 reg = readl(priv->dc_reg + DC_MAP_CONF_PTR(map));
+			/* map entry @idx is unused; assign our value and mark
+			 * it as used */
+			map->offset = offset;
+			map->mask   = mask;
 
-	writel(reg & ~(0xffff << (16 * (map & 0x1))),
-		     priv->dc_reg + DC_MAP_CONF_PTR(map));
+			set_bit(idx, maps_used_field);
+		}
+	}
+
+	dev_dbg(priv->dev, "%s: [%02x@%u] -> map=%p, idx=%zu\n", __func__,
+		mask, offset, map, idx);
+
+	if (!map) {
+		dev_warn(priv->dev, "no mapping space available for %04x@%d\n",
+			 mask, offset);
+
+		return -ENOMEM;
+	}
+
+	return map - &maps[0];
 }
 
 static int ipu_dc_register_mappings(struct ipu_dc_priv *priv)
 {
 	size_t			i;
+	int			rc;
+	uint16_t		pntr[ARRAY_SIZE(IPU_DC_MAPPINGS)];
+	size_t			num_ptr;
+	struct ipu_dc_map_conf	maps[IPU_DC_NUM_MAPS];
+	unsigned long		used_maps = 0;
 
 	BUILD_BUG_ON(ARRAY_SIZE(IPU_DC_MAPPINGS) > IPU_DC_NUM_MAP_PNTR);
 
@@ -404,16 +433,62 @@ static int ipu_dc_register_mappings(struct ipu_dc_priv *priv)
 		ipu_dc_map_ptr_t const	*setup = &IPU_DC_MAPPINGS[i];
 		size_t			j;
 
-		ipu_dc_map_clear(priv, i);
+		pntr[i] = 0;
 
 		for (j = 0; j < ARRAY_SIZE(*setup); ++j) {
-			ipu_dc_map_config(priv, i, j,
-					  (*setup)[j].offset,
-					  (*setup)[j].mask);
+			rc = ipu_dc_add_mapping(priv, maps, &used_maps,
+						&(*setup)[j]);
+
+			if (rc < 0)
+				/* all maps are used... */
+				goto out;
+
+			BUG_ON(rc >= (1 << 5));
+
+			pntr[i] |= rc << (j * 5);
 		}
 	}
 
-	return 0;
+	num_ptr = i;
+
+	/* code below assumes an even number of maps; check constraint */
+	BUILD_BUG_ON(ARRAY_SIZE(maps) % 2 != 0);
+
+	for (i = 0; i < ARRAY_SIZE(maps); i += 2) {
+		uint32_t	v = 0;
+
+		if (used_maps & (1u << i))
+			v |= ((maps[i].mask << 0) |
+			      (maps[i].offset << 8)) << 0;
+
+		if (used_maps & (1u << (i+1)))
+			v |= ((maps[i+1].mask << 0) |
+			      (maps[i+1].offset << 8)) << 16;
+
+		writel(v, priv->dc_reg + DC_MAP_CONF_VAL(i));
+	}
+
+	for (i = 0; i+1 < num_ptr; i += 2) {
+		uint32_t	v = 0;
+
+		v |= pntr[i];
+		v |= pntr[i+1] << 16;
+
+		writel(v, priv->dc_reg + DC_MAP_CONF_PTR(i));
+	}
+
+	/* handle trailing pntr when odd number of mappings is used */
+	if (i < num_ptr)
+		writel(pntr[i], priv->dc_reg + DC_MAP_CONF_PTR(i));
+
+	dev_dbg(priv->dev,
+		"registered %zu mappings with %4lx configuration mask\n",
+		num_ptr, used_maps);
+
+	rc = 0;
+
+out:
+	return rc;
 }
 
 struct ipu_dc *ipu_dc_get(struct ipu_soc *ipu, int channel)
