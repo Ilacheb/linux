@@ -50,7 +50,9 @@
 #include <linux/version.h>
 #include <linux/module.h>
 
-#include "drmP.h"
+#include <drm/drmP.h>
+#include "drm/drm_legacy.h"
+
 #include "vivante_drv.h"
 
 #include "drm_pciids.h"
@@ -63,7 +65,7 @@ static const struct file_operations viv_driver_fops = {
 	.open = drm_open,
 	.release = drm_release,
 	.unlocked_ioctl = drm_ioctl,
-	.mmap = drm_mmap,
+	.mmap = drm_legacy_mmap,
 	.poll = drm_poll,
 	.llseek = noop_llseek,
 };
@@ -76,6 +78,7 @@ static struct drm_driver driver = {
 	.major = DRIVER_MAJOR,
 	.minor = DRIVER_MINOR,
 	.patchlevel = DRIVER_PATCHLEVEL,
+	.set_busid = drm_platform_set_busid,
 };
 
 static int __init vivante_init(void)
