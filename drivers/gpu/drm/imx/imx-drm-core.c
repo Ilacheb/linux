@@ -464,13 +464,30 @@ static const struct drm_ioctl_desc imx_drm_ioctls[] = {
 	/* none so far */
 };
 
+static int x_drm_platform_set_busid(struct drm_device *dev,
+				    struct drm_master *master)
+{
+        int id;
+
+        id = dev->platformdev->id;
+        if (id < 0)
+                id = 0;
+
+        master->unique = kasprintf(GFP_KERNEL, "platform:Vivante GCCore:00");
+        if (!master->unique)
+                return -ENOMEM;
+
+        master->unique_len = strlen(master->unique);
+        return 0;
+}
+
 static struct drm_driver imx_drm_driver = {
 	.driver_features	= DRIVER_MODESET | DRIVER_GEM | DRIVER_PRIME,
 	.load			= imx_drm_driver_load,
 	.unload			= imx_drm_driver_unload,
 	.lastclose		= imx_drm_driver_lastclose,
 	.preclose		= imx_drm_driver_preclose,
-	.set_busid		= drm_platform_set_busid,
+	.set_busid		= x_drm_platform_set_busid,
 	.gem_free_object	= drm_gem_cma_free_object,
 	.gem_vm_ops		= &drm_gem_cma_vm_ops,
 	.dumb_create		= drm_gem_cma_dumb_create,
