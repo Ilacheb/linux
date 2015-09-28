@@ -1115,7 +1115,8 @@ int drm_fb_helper_check_var(struct fb_var_screeninfo *var,
 	/* Need to resize the fb object !!! */
 	if (var->bits_per_pixel > fb->bits_per_pixel ||
 	    var->xres > fb->width || var->yres > fb->height ||
-	    var->xres_virtual > fb->width || var->yres_virtual > fb->height) {
+	    var->xres_virtual > fb->width ||
+	    var->yres_virtual > fb->height * CONFIG_DRM_NUM_FB_BUFFERS) {
 		DRM_DEBUG("fb userspace requested width/height/bpp is greater than current fb "
 			  "request %dx%d-%d (virtual %dx%d) > %dx%d-%d\n",
 			  var->xres, var->yres, var->bits_per_pixel,
@@ -1525,7 +1526,7 @@ void drm_fb_helper_fill_var(struct fb_info *info, struct drm_fb_helper *fb_helpe
 	struct drm_framebuffer *fb = fb_helper->fb;
 	info->pseudo_palette = fb_helper->pseudo_palette;
 	info->var.xres_virtual = fb->width;
-	info->var.yres_virtual = fb->height;
+	info->var.yres_virtual = fb->height * CONFIG_DRM_NUM_FB_BUFFERS;
 	info->var.bits_per_pixel = fb->bits_per_pixel;
 	info->var.accel_flags = FB_ACCELF_TEXT;
 	info->var.xoffset = 0;
