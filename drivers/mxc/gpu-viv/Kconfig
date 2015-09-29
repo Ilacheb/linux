@@ -6,4 +6,9 @@ config MXC_GPU_VIV
 	---help---
          Say Y to get the GPU driver support.
 
+config MXC_GPU_VIV_CMA_SIZE
+	int "memory allocated for Vivante GPU"
+	depends on MXC_GPU_VIV
+	default 134217728
+
 endmenu
