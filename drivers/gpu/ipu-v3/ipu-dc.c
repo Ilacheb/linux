@@ -104,7 +104,7 @@ enum ipu_dc_map {
 
 struct ipu_dc {
 	/* The display interface number assigned to this dc channel */
-	unsigned int		di;
+	unsigned int		display;
 	void __iomem		*base;
 	struct ipu_dc_priv	*priv;
 	int			chno;
@@ -460,7 +460,7 @@ int ipu_dc_init_sync(struct ipu_dc *dc, struct ipu_di *di, bool interlaced,
 	u32 reg = 0;
 	int map;
 
-	dc->di = ipu_di_get_num(di);
+	dc->display = ipu_di_get_num(di) ? 1 : 0;
 
 	map = ipu_bus_format_to_map(bus_format);
 	if (map < 0) {
@@ -474,11 +474,11 @@ int ipu_dc_init_sync(struct ipu_dc *dc, struct ipu_di *di, bool interlaced,
 	if (interlaced) {
 		info.code     = events_interlaced;
 		info.num_code = ARRAY_SIZE(events_interlaced);
-		info.addr     = dc->di ? 1 : 0;
+		info.addr     = dc->display ? 1 : 0;
 	} else {
 		info.code     = events_non_interlaced;
 		info.num_code = ARRAY_SIZE(events_non_interlaced);
-		info.addr     = dc->di ? 1 : 5;
+		info.addr     = dc->display ? 1 : 5;
 	}
 
 	ipu_dc_write_evt_microcodes(dc, &info);
@@ -491,7 +491,7 @@ int ipu_dc_init_sync(struct ipu_dc *dc, struct ipu_di *di, bool interlaced,
 	writel(reg, dc->base + DC_WR_CH_CONF);
 
 	writel(0x0, dc->base + DC_WR_CH_ADDR);
-	writel(width, priv->dc_reg + DC_DISP_CONF2(dc->di));
+	writel(width, priv->dc_reg + DC_DISP_CONF2(dc->display));
 
 	return 0;
 }
