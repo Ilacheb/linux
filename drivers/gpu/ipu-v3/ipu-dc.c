@@ -81,7 +81,7 @@
 #define DC_WR_CH_CONF_PROG_TYPE_NORMAL		(4 << 5)
 #define DC_WR_CH_CONF_PROG_TYPE_MASK		(7 << 5)
 #define DC_WR_CH_CONF_PROG_DI_ID		(1 << 2)
-#define DC_WR_CH_CONF_PROG_DISP_ID(i)		(((i) & 0x1) << 3)
+#define DC_WR_CH_CONF_PROG_DISP_ID(i)		(((i) & 0x3) << 3)
 
 #define IPU_DC_NUM_CHANNELS	10
 /* the number of mapping units; see IPUx_DC_MAP_CONF_{15..26} */
