@@ -24,6 +24,8 @@ struct ipu_soc;
 
 #include <video/imx-ipu-v3.h>
 
+#define ARRAY_AND_SIZE(x) (x), ARRAY_SIZE(x)
+
 #define IPU_MCU_T_DEFAULT	8
 #define IPU_CM_IDMAC_REG_OFS	0x00008000
 #define IPU_CM_IC_REG_OFS	0x00020000
