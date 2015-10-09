@@ -24,6 +24,8 @@
 #include <video/imx-ipu-v3.h>
 #include "ipu-prv.h"
 
+#include "ipu-dc.h"
+
 #define DC_MAP_CONF_PTR(n)	(0x108 + ((n) & ~0x1) * 2)
 #define DC_MAP_CONF_VAL(n)	(0x144 + ((n) & ~0x1) * 2)
 
@@ -59,12 +61,7 @@
 #define DC_DISP_CONF2(disp)	(0xe8 + (disp) * 4)
 #define DC_STAT			0x1c8
 
-#define WROD(lf)		(0x18 | ((lf) << 1))
-#define WRG			0x01
-#define WCLK			0xc9
-
 #define SYNC_WAVE 0
-#define NULL_WAVE (-1)
 
 #define DC_GEN_SYNC_1_6_SYNC	(2 << 1)
 #define DC_GEN_SYNC_PRIORITY_1	(1 << 7)
@@ -87,6 +84,8 @@
 #define IPU_DC_NUM_MAPS		24
 /* the (maximum) number of mapping pointers; see IPUx_DC_MAP_CONF_{0..14} */
 #define IPU_DC_NUM_MAP_PNTR	30
+
+#define IPU_DC_NUM_MICROCODE	128
 
 struct ipu_dc_priv;
 
@@ -172,26 +171,6 @@ static void dc_link_event(struct ipu_dc *dc, int event, int addr, int priority)
 	writel(reg, dc->base + DC_RL_CH(event));
 }
 
-static void dc_write_tmpl(struct ipu_dc *dc, int word, u32 opcode, u32 operand,
-		int map, int wave, int glue, int sync, int stop)
-{
-	struct ipu_dc_priv *priv = dc->priv;
-	u32 reg1, reg2;
-
-	if (opcode == WCLK) {
-		reg1 = (operand << 20) & 0xfff00000;
-		reg2 = operand >> 12 | opcode << 1 | stop << 9;
-	} else if (opcode == WRG) {
-		reg1 = sync | glue << 4 | ++wave << 11 | ((operand << 15) & 0xffff8000);
-		reg2 = operand >> 17 | opcode << 7 | stop << 9;
-	} else {
-		reg1 = sync | glue << 4 | ++wave << 11 | ++map << 15 | ((operand << 20) & 0xfff00000);
-		reg2 = operand >> 12 | opcode << 4 | stop << 9;
-	}
-	writel(reg1, priv->dc_tmpl_reg + word * 8);
-	writel(reg2, priv->dc_tmpl_reg + word * 8 + 4);
-}
-
 static int ipu_bus_format_to_map(u32 fmt)
 {
 	switch (fmt) {
@@ -212,6 +191,70 @@ static int ipu_bus_format_to_map(u32 fmt)
 	}
 }
 
+static void dc_write_tmpl(struct ipu_dc_priv *priv, unsigned int addr,
+			  uint64_t code)
+{
+	writel((code >>  0) & 0xffffffff, priv->dc_tmpl_reg + addr * 8);
+	writel((code >> 32) & 0xffffffff, priv->dc_tmpl_reg + addr * 8 + 4);
+}
+
+static unsigned int dc_write_microcode(struct ipu_dc *dc,
+				       unsigned int addr,
+				       uint64_t const mc[], size_t mc_cnt)
+{
+	struct ipu_dc_priv	*priv = dc->priv;
+	size_t			i;
+
+	BUG_ON(addr + mc_cnt > IPU_DC_NUM_MICROCODE);
+
+	for (i = 0; i < mc_cnt; ++i) {
+		dev_dbg(dc->priv->dev, "microcode[%03u]=0x%03x_%08x\n", addr+i,
+			(unsigned int)(mc[i] >> 32),
+			(unsigned int)(mc[i] >> 0));
+
+		dc_write_tmpl(priv, addr + i, mc[i]);
+	}
+
+	return addr + mc_cnt;
+}
+
+struct dc_microcode_set {
+	uint64_t const	*code;
+	size_t		num;
+};
+
+struct dc_evt_microcode {
+	struct dc_microcode_set		set;
+	unsigned int			prio;
+};
+
+static unsigned int ipu_dc_write_evt_microcodes(
+	struct ipu_dc *dc, unsigned int addr,
+	struct dc_evt_microcode const code[], size_t num)
+{
+	size_t		i;
+
+	for (i = 0; i < num; ++i) {
+		struct dc_evt_microcode const	*c = &code[i];
+
+		if (!c->set.code) {
+			dc_link_event(dc, i, 0, 0);
+		} else {
+			dc_link_event(dc, i, addr, c->prio);
+			addr = dc_write_microcode(dc, addr,
+						  c->set.code, c->set.num);
+		}
+	}
+
+	/* TODO: ensure that DC_EVT_NEW_DATA is the highest possible event;
+	 * perhaps add a field to 'struct ipu_dc' to deal with chan #8 and #9
+	 * too... */
+	for (; i < DC_EVT_NEW_DATA; ++i)
+		dc_link_event(dc, i, 0, 0);
+
+	return addr;
+}
+
 int ipu_dc_init_sync(struct ipu_dc *dc, struct ipu_di *di, bool interlaced,
 		u32 bus_format, u32 width)
 {
@@ -228,46 +271,68 @@ int ipu_dc_init_sync(struct ipu_dc *dc, struct ipu_di *di, bool interlaced,
 	}
 
 	if (interlaced) {
-		int addr;
+		uint64_t const	microcode[] = {
+			MICROCODE_WROD(0, map, SYNC_WAVE, 0, 8) |
+			MICROCODE_STOP,
+		};
+
+		struct dc_evt_microcode const	evts[] = {
+			[DC_EVT_NL] = {
+				.set	= { ARRAY_AND_SIZE(microcode) },
+				.prio	= 3,
+			},
+			[DC_EVT_EOL] = {
+				.set	= { ARRAY_AND_SIZE(microcode) },
+				.prio	= 2,
+			},
+			[DC_EVT_NEW_DATA] = {
+				.set	= { ARRAY_AND_SIZE(microcode) },
+				.prio	= 1,
+			},
+		};
+
+		ipu_dc_write_evt_microcodes(dc, dc->di ? 1 : 0, ARRAY_AND_SIZE(evts));
+	} else {
+		uint64_t const	microcode_nl[] = {
+			MICROCODE_WROD(0, map, SYNC_WAVE, 8, 5) |
+			MICROCODE_STOP,
+		};
+
+		uint64_t const	microcode_eol[] = {
+			MICROCODE_WROD(0, map, SYNC_WAVE, 4, 5),
+			MICROCODE_WRG (0,      NO_WAVE,   0, 0) |
+			MICROCODE_STOP,
+		};
+
+		uint64_t const	microcode_new_data[] = {
+			MICROCODE_WROD(0, map, SYNC_WAVE, 0, 5) |
+			MICROCODE_STOP,
+		};
+
+		struct dc_evt_microcode const	evts[] = {
+			[DC_EVT_NL] = {
+				.set	= { ARRAY_AND_SIZE(microcode_nl) },
+				.prio	= 3,
+			},
+			[DC_EVT_EOL] = {
+				.set	= { ARRAY_AND_SIZE(microcode_eol) },
+				.prio	= 2,
+			},
+			[DC_EVT_NEW_DATA] = {
+				.set	= { ARRAY_AND_SIZE(microcode_new_data) },
+				.prio	= 1,
+			},
+		};
+
+		unsigned int		addr;
 
 		if (dc->di)
 			addr = 1;
 		else
-			addr = 0;
+			addr = 5;
 
-		dc_link_event(dc, DC_EVT_NL, addr, 3);
-		dc_link_event(dc, DC_EVT_EOL, addr, 2);
-		dc_link_event(dc, DC_EVT_NEW_DATA, addr, 1);
-
-		/* Init template microcode */
-		dc_write_tmpl(dc, addr, WROD(0), 0, map, SYNC_WAVE, 0, 6, 1);
-	} else {
-		if (dc->di) {
-			dc_link_event(dc, DC_EVT_NL, 2, 3);
-			dc_link_event(dc, DC_EVT_EOL, 3, 2);
-			dc_link_event(dc, DC_EVT_NEW_DATA, 1, 1);
-			/* Init template microcode */
-			dc_write_tmpl(dc, 2, WROD(0), 0, map, SYNC_WAVE, 8, 5, 1);
-			dc_write_tmpl(dc, 3, WROD(0), 0, map, SYNC_WAVE, 4, 5, 0);
-			dc_write_tmpl(dc, 4, WRG, 0, map, NULL_WAVE, 0, 0, 1);
-			dc_write_tmpl(dc, 1, WROD(0), 0, map, SYNC_WAVE, 0, 5, 1);
-		} else {
-			dc_link_event(dc, DC_EVT_NL, 5, 3);
-			dc_link_event(dc, DC_EVT_EOL, 6, 2);
-			dc_link_event(dc, DC_EVT_NEW_DATA, 8, 1);
-			/* Init template microcode */
-			dc_write_tmpl(dc, 5, WROD(0), 0, map, SYNC_WAVE, 8, 5, 1);
-			dc_write_tmpl(dc, 6, WROD(0), 0, map, SYNC_WAVE, 4, 5, 0);
-			dc_write_tmpl(dc, 7, WRG, 0, map, NULL_WAVE, 0, 0, 1);
-			dc_write_tmpl(dc, 8, WROD(0), 0, map, SYNC_WAVE, 0, 5, 1);
-		}
+		ipu_dc_write_evt_microcodes(dc, addr, ARRAY_AND_SIZE(evts));
 	}
-	dc_link_event(dc, DC_EVT_NF, 0, 0);
-	dc_link_event(dc, DC_EVT_NFIELD, 0, 0);
-	dc_link_event(dc, DC_EVT_EOF, 0, 0);
-	dc_link_event(dc, DC_EVT_EOFIELD, 0, 0);
-	dc_link_event(dc, DC_EVT_NEW_CHAN, 0, 0);
-	dc_link_event(dc, DC_EVT_NEW_ADDR, 0, 0);
 
 	reg = readl(dc->base + DC_WR_CH_CONF);
 	if (interlaced)
