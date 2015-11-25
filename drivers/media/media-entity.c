@@ -505,6 +505,7 @@ void __media_entity_remove_links(struct media_entity *entity)
 
 			/* Insert last entry in place of the dropped link. */
 			*rlink = remote->links[remote->num_links];
+			rlink->reverse->reverse = rlink;
 		}
 	}
 
