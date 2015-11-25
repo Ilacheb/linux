@@ -118,6 +118,11 @@ void v4l2_device_unregister_subdev(struct v4l2_subdev *sd);
 int __must_check
 v4l2_device_register_subdev_nodes(struct v4l2_device *v4l2_dev);
 
+/* Register device nodes for a subdev of the v4l2 device */
+int __must_check
+v4l2_device_register_subdev_node(struct v4l2_device *v4l2_dev,
+				 struct v4l2_subdev *sd);
+
 /* Send a notification to v4l2_device. */
 static inline void v4l2_subdev_notify(struct v4l2_subdev *sd,
 				      unsigned int notification, void *arg)
