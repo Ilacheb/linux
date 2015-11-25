@@ -517,13 +517,17 @@ EXPORT_SYMBOL_GPL(__media_entity_remove_links);
 
 void media_entity_remove_links(struct media_entity *entity)
 {
-	/* Do nothing if the entity is not registered. */
-	if (entity->parent == NULL)
-		return;
+	/* HACK: skip locking when parent is not available */
+	if (entity->parent)
+		mutex_lock(&entity->parent->graph_mutex);
+	else
+		printk(KERN_WARNING "running %s on orphan entity %s\n",
+		       __func__, entity->name);
 
-	mutex_lock(&entity->parent->graph_mutex);
 	__media_entity_remove_links(entity);
-	mutex_unlock(&entity->parent->graph_mutex);
+
+	if (entity->parent)
+		mutex_unlock(&entity->parent->graph_mutex);
 }
 EXPORT_SYMBOL_GPL(media_entity_remove_links);
 
