@@ -82,6 +82,7 @@ EXPORT_SYMBOL_GPL(media_entity_init);
 void
 media_entity_cleanup(struct media_entity *entity)
 {
+	WARN_ON(entity->num_links > 0);
 	kfree(entity->links);
 }
 EXPORT_SYMBOL_GPL(media_entity_cleanup);
