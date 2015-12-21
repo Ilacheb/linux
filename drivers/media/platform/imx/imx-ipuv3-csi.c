@@ -447,7 +447,7 @@ static inline void ipucsi_set_inactive_buffer(struct ipucsi *ipucsi,
 	if (ipucsi->ilo < 0)
 		eba -= ipucsi->ilo;
 
-	ipu_cpmem_set_buffer(ipu_get_cpmem(ipucsi->ipuch), bufptr, eba);
+	ipu_cpmem_set_buffer(ipucsi->ipuch, bufptr, eba);
 
 	ipu_idmac_select_buffer(ipucsi->ipuch, bufptr);
 }
@@ -478,7 +478,7 @@ int ipucsi_resume_stream(struct ipucsi *ipucsi)
 	if (ipucsi->ilo < 0)
 		eba -= ipucsi->ilo;
 
-	ipu_cpmem_set_buffer(ipu_get_cpmem(ipucsi->ipuch), 0, eba);
+	ipu_cpmem_set_buffer(ipucsi->ipuch, 0, eba);
 
 	ipu_idmac_select_buffer(ipucsi->ipuch, 0);
 
@@ -497,7 +497,7 @@ int ipucsi_resume_stream(struct ipucsi *ipucsi)
 	if (ipucsi->ilo < 0)
 		eba -= ipucsi->ilo;
 
-	ipu_cpmem_set_buffer(ipu_get_cpmem(ipucsi->ipuch), 1, eba);
+	ipu_cpmem_set_buffer(ipucsi->ipuch, 1, eba);
 
 	ipu_idmac_select_buffer(ipucsi->ipuch, 1);
 
@@ -785,10 +785,10 @@ static int ipucsi_videobuf_init(struct vb2_buffer *vb)
 static int ipucsi_videobuf_start_streaming(struct vb2_queue *vq, unsigned int count)
 {
 	struct ipucsi *ipucsi = vq->drv_priv;
+	struct ipuv3_channel *ipuch = ipucsi->ipuch;
 	struct ipucsi_format *ipucsifmt = ipucsi_current_format(ipucsi);
 	int xres = ipucsi->format.fmt.pix.width;
 	int yres = ipucsi->format.fmt.pix.height;
-	struct ipu_ch_param *cpmem = ipu_get_cpmem(ipucsi->ipuch);
 	struct device *dev = ipucsi->dev;
 	int capture_channel, burstsize;
 	struct vb2_v4l2_buffer *vb;
@@ -796,7 +796,7 @@ static int ipucsi_videobuf_start_streaming(struct vb2_queue *vq, unsigned int co
 	int nfack_irq;
 	int ret;
 
-	memset(cpmem, 0, sizeof(*cpmem));
+	ipu_cpmem_zero(ipuch);
 
 	nfack_irq = ipu_idmac_channel_irq(ipucsi->ipu, ipucsi->ipuch,
 			IPU_IRQ_NFACK);
@@ -810,14 +810,14 @@ static int ipucsi_videobuf_start_streaming(struct vb2_queue *vq, unsigned int co
 	dev_dbg(dev, "width: %d height: %d, %c%c%c%c\n",
 			xres, yres, pixfmtstr(ipucsi->format.fmt.pix.pixelformat));
 
-	ipu_cpmem_set_resolution(cpmem, xres, yres);
+	ipu_cpmem_set_resolution(ipuch, xres, yres);
 
 	if (ipucsifmt->raw) {
 		/*
 		 * raw formats. We can only pass them through to memory
 		 */
-		ipu_cpmem_set_stride(cpmem, xres * ipucsifmt->bytes_per_pixel);
-		ipu_cpmem_set_format_passthrough(cpmem, ipucsifmt->bytes_per_sample * 8);
+		ipu_cpmem_set_stride(ipuch, xres * ipucsifmt->bytes_per_pixel);
+		ipu_cpmem_set_format_passthrough(ipuch, ipucsifmt->bytes_per_sample * 8);
 	} else {
 		/*
 		 * formats we understand, we can write it in any format not requiring
@@ -826,17 +826,17 @@ static int ipucsi_videobuf_start_streaming(struct vb2_queue *vq, unsigned int co
 		u32 fourcc = ipucsi->format.fmt.pix.pixelformat;
 		switch (fourcc) {
 		case V4L2_PIX_FMT_RGB32:
-			ipu_cpmem_set_stride(cpmem, xres * 4);
-			ipu_cpmem_set_fmt(cpmem, fourcc);
+			ipu_cpmem_set_stride(ipuch, xres * 4);
+			ipu_cpmem_set_fmt(ipuch, fourcc);
 			break;
 		case V4L2_PIX_FMT_UYVY:
 		case V4L2_PIX_FMT_YUYV:
-			ipu_cpmem_set_stride(cpmem, xres * 2);
-			ipu_cpmem_set_yuv_interleaved(cpmem, fourcc);
+			ipu_cpmem_set_stride(ipuch, xres * 2);
+			ipu_cpmem_set_yuv_interleaved(ipuch, fourcc);
 			break;
 		case V4L2_PIX_FMT_YUV420:
-			ipu_cpmem_set_stride(cpmem, xres);
-			ipu_cpmem_set_yuv_planar(cpmem, V4L2_PIX_FMT_YUV420, xres, yres);
+			ipu_cpmem_set_stride(ipuch, xres);
+			ipu_cpmem_set_yuv_planar(ipuch, V4L2_PIX_FMT_YUV420, xres, yres);
 			break;
 		default:
 			ret = -EINVAL;
@@ -845,9 +845,9 @@ static int ipucsi_videobuf_start_streaming(struct vb2_queue *vq, unsigned int co
 	}
 
 	if (ipucsi->ilo) {
-		ipu_ch_cpmem_set_interlaced_scan(ipucsi->ipuch);
+		ipu_ch_cpmem_set_interlaced_scan(ipuch);
 		if (ipucsi->ilo < 0) {
-			ipu_ch_param_write_field(cpmem, IPU_FIELD_ILO,
+			ipu_ch_param_write_field(ipuch, IPU_FIELD_ILO,
 						 0x100000 - (ipucsi->ilo/8));
 		}
 	}
