@@ -95,7 +95,7 @@ EXPORT_SYMBOL(v4l2_m2m_get_vq);
 /**
  * v4l2_m2m_next_buf() - return next buffer from the list of ready buffers
  */
-void *v4l2_m2m_next_buf(struct v4l2_m2m_queue_ctx *q_ctx)
+struct vb2_v4l2_buffer *v4l2_m2m_next_buf(struct v4l2_m2m_queue_ctx *q_ctx)
 {
 	struct v4l2_m2m_buffer *b;
 	unsigned long flags;
@@ -117,7 +117,7 @@ EXPORT_SYMBOL_GPL(v4l2_m2m_next_buf);
  * v4l2_m2m_buf_remove() - take off a buffer from the list of ready buffers and
  * return it
  */
-void *v4l2_m2m_buf_remove(struct v4l2_m2m_queue_ctx *q_ctx)
+struct vb2_v4l2_buffer *v4l2_m2m_buf_remove(struct v4l2_m2m_queue_ctx *q_ctx)
 {
 	struct v4l2_m2m_buffer *b;
 	unsigned long flags;
