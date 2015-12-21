@@ -316,8 +316,8 @@ static int ipu_csi_get_mbus_config(struct ipucsi *ipucsi,
 	return ret;
 }
 
-static int ipu_csi_init_interface(struct ipucsi *ipucsi,
-			   uint16_t width, uint16_t height)
+static int ipu_csi_init_interface_local(struct ipucsi *ipucsi,
+					uint16_t width, uint16_t height)
 {
 	struct device *dev = ipucsi->dev;
 	u32 sens_conf, mbus_flags;
@@ -881,7 +881,7 @@ static int ipucsi_videobuf_start_streaming(struct vb2_queue *vq, unsigned int co
 	if (ret)
 		goto free_irq;
 
-	ret = ipu_csi_init_interface(ipucsi, xres, yres);
+	ret = ipu_csi_init_interface_local(ipucsi, xres, yres);
 	if (ret)
 		goto free_irq;
 
