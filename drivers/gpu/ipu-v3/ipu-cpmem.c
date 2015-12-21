@@ -662,6 +662,12 @@ int ipu_cpmem_set_fmt(struct ipuv3_channel *ch, u32 drm_fourcc)
 	case DRM_FORMAT_ARGB4444:
 		ipu_cpmem_set_format_rgb(ch, &def_argb_16_4444);
 		break;
+	case IPU_DRM_FORMAT_GENERIC8:
+		rc = ipu_cpmem_set_format_passthrough(ch, 8);
+		break;
+	case IPU_DRM_FORMAT_GENERIC16:
+		rc = ipu_cpmem_set_format_passthrough(ch, 16);
+		break;
 	default:
 		return -EINVAL;
 	}
