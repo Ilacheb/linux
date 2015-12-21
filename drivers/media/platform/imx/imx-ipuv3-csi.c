@@ -227,7 +227,7 @@ static struct ipucsi_format ipucsi_format_testpattern = {
 
 /* buffer for one video frame */
 struct ipucsi_buffer {
-	struct vb2_buffer		vb;
+	struct vb2_v4l2_buffer		vb;
 	struct list_head		queue;
 };
 
@@ -273,7 +273,7 @@ struct ipucsi {
 
 static struct ipucsi_buffer *to_ipucsi_vb(struct vb2_buffer *vb)
 {
-	return container_of(vb, struct ipucsi_buffer, vb);
+	return container_of(vb, struct ipucsi_buffer, vb.vb2_buf);
 }
 
 static u32 ipu_csi_read(struct ipucsi *csi, unsigned offset)
@@ -439,10 +439,10 @@ static int ipu_csi_init_interface(struct ipucsi *ipucsi,
 }
 
 static inline void ipucsi_set_inactive_buffer(struct ipucsi *ipucsi,
-					      struct vb2_buffer *vb)
+					      struct vb2_v4l2_buffer *vb)
 {
 	int bufptr = !ipu_idmac_get_current_buffer(ipucsi->ipuch);
-	dma_addr_t eba = vb2_dma_contig_plane_dma_addr(vb, 0);
+	dma_addr_t eba = vb2_dma_contig_plane_dma_addr(&vb->vb2_buf, 0);
 
 	if (ipucsi->ilo < 0)
 		eba -= ipucsi->ilo;
@@ -470,7 +470,7 @@ int ipucsi_resume_stream(struct ipucsi *ipucsi)
 	}
 
 	buf = list_first_entry(&ipucsi->capture, struct ipucsi_buffer, queue);
-	vb = &buf->vb;
+	vb = &buf->vb.vb2_buf;
 
 	ipu_idmac_set_double_buffer(ipucsi->ipuch, 1);
 
@@ -490,7 +490,7 @@ int ipucsi_resume_stream(struct ipucsi *ipucsi)
 	if (!list_is_singular(&ipucsi->capture)) {
 		buf = list_entry(ipucsi->capture.next->next,
 				 struct ipucsi_buffer, queue);
-		vb = &buf->vb;
+		vb = &buf->vb.vb2_buf;
 	}
 
 	eba = vb2_dma_contig_plane_dma_addr(vb, 0);
@@ -513,7 +513,7 @@ int ipucsi_resume_stream(struct ipucsi *ipucsi)
 	return 0;
 }
 
-static void ipucsi_clear_buffer(struct vb2_buffer *vb, u32 fourcc)
+static void ipucsi_clear_buffer(struct vb2_v4l2_buffer *vb, u32 fourcc)
 {
 	u32 black, *p, *end;
 
@@ -529,8 +529,8 @@ static void ipucsi_clear_buffer(struct vb2_buffer *vb, u32 fourcc)
 		break;
 	}
 
-	p = vb2_plane_vaddr(vb, 0);
-	end = p + vb2_plane_size(vb, 0) / 4;
+	p = vb2_plane_vaddr(&vb->vb2_buf, 0);
+	end = p + vb2_plane_size(&vb->vb2_buf, 0) / 4;
 
 	while (p < end)
 		*p++ = black;
@@ -567,7 +567,7 @@ int ipucsi_pause_stream(struct ipucsi *ipucsi)
 		ipucsi_clear_buffer(&buf->vb,
 				    ipucsi->format.fmt.pix.pixelformat);
 
-		vb2_buffer_done(&buf->vb, VB2_BUF_STATE_DONE);
+		vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_DONE);
 
 		spin_lock_irqsave(&ipucsi->lock, flags);
 	}
@@ -615,7 +615,7 @@ static irqreturn_t ipucsi_new_frame_handler(int irq, void *context)
 {
 	struct ipucsi *ipucsi = context;
 	struct ipucsi_buffer *buf;
-	struct vb2_buffer *vb;
+	struct vb2_v4l2_buffer *vb;
 	unsigned long flags;
 
 	/* The IDMAC just started to write pixel data into the current buffer */
@@ -628,17 +628,17 @@ static irqreturn_t ipucsi_new_frame_handler(int irq, void *context)
 	 */
 	if (ipucsi->active) {
 		vb = &ipucsi->active->vb;
-		buf = to_ipucsi_vb(vb);
+		buf = to_ipucsi_vb(&vb->vb2_buf);
 
-		if (vb2_is_streaming(vb->vb2_queue) && list_is_singular(&ipucsi->capture)) {
+		if (vb2_is_streaming(vb->vb2_buf.vb2_queue) && list_is_singular(&ipucsi->capture)) {
 			pr_debug("%s: reusing 0x%08x\n", __func__,
-				vb2_dma_contig_plane_dma_addr(vb, 0));
+				vb2_dma_contig_plane_dma_addr(&vb->vb2_buf, 0));
 			/* DEBUG: check if buf == EBA(active) */
 		} else {
 			/* Otherwise, mark buffer as finished */
 			list_del_init(&buf->queue);
 
-			vb2_buffer_done(vb, VB2_BUF_STATE_DONE);
+			vb2_buffer_done(&vb->vb2_buf, VB2_BUF_STATE_DONE);
 		}
 	}
 
@@ -648,9 +648,9 @@ static irqreturn_t ipucsi_new_frame_handler(int irq, void *context)
 	ipucsi->active = list_first_entry(&ipucsi->capture,
 					   struct ipucsi_buffer, queue);
 	vb = &ipucsi->active->vb;
-	do_gettimeofday(&vb->v4l2_buf.timestamp);
-	vb->v4l2_buf.field = ipucsi->format.fmt.pix.field;
-	vb->v4l2_buf.sequence = ipucsi->sequence++;
+	do_gettimeofday(&vb->timestamp);
+	vb->field = ipucsi->format.fmt.pix.field;
+	vb->sequence = ipucsi->sequence++;
 
 	/*
 	 * Point the inactive buffer address to the next queued buffer,
@@ -680,10 +680,11 @@ static struct ipucsi_format *ipucsi_current_format(struct ipucsi *ipucsi)
 /*
  *  Videobuf operations
  */
-static int ipucsi_videobuf_setup(struct vb2_queue *vq, const struct v4l2_format *fmt,
+static int ipucsi_videobuf_setup(struct vb2_queue *vq, const void *fmt_,
 		unsigned int *count, unsigned int *num_planes,
 		unsigned int sizes[], void *alloc_ctxs[])
 {
+	struct v4l2_format const *fmt = fmt_;
 	struct ipucsi *ipucsi = vq->drv_priv;
 	int bytes_per_line;
 	struct ipucsi_format *ipucsifmt = ipucsi_current_format(ipucsi);
@@ -743,7 +744,7 @@ static void ipucsi_videobuf_queue(struct vb2_buffer *vb)
 	 * address to the incoming buffer
 	 */
 	if (vb2_is_streaming(vb->vb2_queue) && list_is_singular(&ipucsi->capture))
-		ipucsi_set_inactive_buffer(ipucsi, vb);
+		ipucsi_set_inactive_buffer(ipucsi, to_vb2_v4l2_buffer(vb));
 
 	list_add_tail(&buf->queue, &ipucsi->capture);
 
@@ -790,7 +791,7 @@ static int ipucsi_videobuf_start_streaming(struct vb2_queue *vq, unsigned int co
 	struct ipu_ch_param *cpmem = ipu_get_cpmem(ipucsi->ipuch);
 	struct device *dev = ipucsi->dev;
 	int capture_channel, burstsize;
-	struct vb2_buffer *vb;
+	struct vb2_v4l2_buffer *vb;
 	struct ipucsi_buffer *buf;
 	int nfack_irq;
 	int ret;
@@ -935,7 +936,7 @@ static int ipucsi_videobuf_stop_streaming(struct vb2_queue *vq)
 		struct ipucsi_buffer *buf = list_entry(ipucsi->capture.next,
 						 struct ipucsi_buffer, queue);
 		list_del_init(ipucsi->capture.next);
-		vb2_buffer_done(&buf->vb, VB2_BUF_STATE_ERROR);
+		vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_ERROR);
 	}
 	spin_unlock_irqrestore(&ipucsi->lock, flags);
 
