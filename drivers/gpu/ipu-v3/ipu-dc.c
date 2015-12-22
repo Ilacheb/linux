@@ -658,3 +658,82 @@ int ipu_dc_init(struct ipu_soc *ipu, struct device *dev,
 void ipu_dc_exit(struct ipu_soc *ipu)
 {
 }
+
+/* use BUILD_BUG_ON_NULL(), not BUILD_BUG_ON() because latter does not seem to
+ * trigger when code is optimized away */
+#define TEST_MC_EXT(_exp, _code, _alloc) do {		\
+		_alloc uint64_t const	tmp_array[] = { (_code) };	\
+		_alloc uint64_t const	tmp = (_code);			\
+		(void)_build_bug_on_zero((_code) != (_exp));		\
+		(void)tmp_array;					\
+		(void)tmp;						\
+	} while (0)
+
+#define TEST_MC(_exp, _code)	TEST_MC_EXT(_exp, _code, static)
+
+static int __init __maybe_unused ipu_dc_selftest(void)
+{
+	enum {
+		/* some symbols which help to identify parameters in macros
+		 * below */
+		TEST_WAVE = 1,
+		TEST_MAP  = 2,
+		TEST_GLUE = 3,
+		TEST_SYNC = 4,
+	};
+
+	TEST_MC(0x0102468ace0ull,
+		MICROCODE_HLG (0x81234567u));
+	TEST_MC(0x0c091a29034ull,
+		MICROCODE_WRG (0x812345,   TEST_WAVE, TEST_GLUE, TEST_SYNC));
+	TEST_MC(0x15ffff18000ull,
+		MICROCODE_HLOA(true, 0xffff, TEST_MAP));
+	TEST_MC(0x1dffff19034ull,
+		MICROCODE_WROA(true, 0xffff, TEST_MAP, TEST_WAVE, TEST_GLUE, TEST_SYNC));
+	TEST_MC(0x10ffff18000ull,
+		MICROCODE_HLOD(0xffff, TEST_MAP));
+	TEST_MC(0x18ffff19034ull,
+		MICROCODE_WROD(0xffff, TEST_MAP, TEST_WAVE, TEST_GLUE, TEST_SYNC));
+	TEST_MC(0x11e00018000ull,
+		MICROCODE_HLOAR(true, TEST_MAP));
+	TEST_MC(0x19e00019034ull,
+		MICROCODE_WROAR(true, TEST_MAP, TEST_WAVE, TEST_GLUE, TEST_SYNC));
+	TEST_MC(0x11800018000ull,
+		MICROCODE_HDLODR(TEST_MAP));
+	TEST_MC(0x19940019034ull,
+		MICROCODE_WRODR(true, false, true,
+				TEST_MAP, TEST_WAVE, TEST_GLUE, TEST_SYNC));
+	TEST_MC(0x19b00019034ull,
+		MICROCODE_WRBC(TEST_MAP, TEST_WAVE, TEST_GLUE, TEST_SYNC));
+	TEST_MC(0x193fff00000ull,
+		MICROCODE_WCLK(0x1fff));
+	TEST_MC(0x113fff19034ull,
+		MICROCODE_WSTS_I  (0x1fff, TEST_MAP, TEST_WAVE, TEST_GLUE, TEST_SYNC));
+	TEST_MC(0x115fff19034ull,
+		MICROCODE_WSTS_II (0x1fff, TEST_MAP, TEST_WAVE, TEST_GLUE, TEST_SYNC));
+	TEST_MC(0x317fff19034ull,
+		MICROCODE_WSTS_III(0x1fff, TEST_MAP, TEST_WAVE, TEST_GLUE, TEST_SYNC) |
+		MICROCODE_STOP);
+	TEST_MC(0x111fff19034ull,
+		MICROCODE_RD(0x1fff, TEST_MAP, TEST_WAVE, TEST_GLUE, TEST_SYNC));
+	TEST_MC(0x11afff8081cull,
+		MICROCODE_WACK(0x1fff, TEST_WAVE, TEST_GLUE, TEST_SYNC));
+	TEST_MC(0x1900fff8000ull,
+		MICROCODE_MSK(0x1fff));
+	TEST_MC(0x04000001fe0ull,
+		MICROCODE_HMA(0xff));
+	TEST_MC(0x02000001fe0ull,
+		MICROCODE_HMA1(0xff));
+	TEST_MC(0x07000001fe4ull,
+		MICROCODE_BMA(1, 0, 255, TEST_SYNC));
+	TEST_MC(0x06800001fe4ull,
+		MICROCODE_BMA(0, 1, 255, TEST_SYNC));
+
+	return 0;
+}
+
+#if !defined(MODULE) && defined(DEBUG)
+/* modules do not allow multiple initcalls; skip execution of self test in
+ * this case */
+late_initcall(ipu_dc_selftest);
+#endif
