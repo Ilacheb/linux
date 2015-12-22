@@ -810,15 +810,19 @@ void ipu_dc_exit(struct ipu_soc *ipu)
 
 /* use BUILD_BUG_ON_NULL(), not BUILD_BUG_ON() because latter does not seem to
  * trigger when code is optimized away */
-#define TEST_MC_EXT(_exp, _code, _alloc) do {		\
+#define TEST_MC_EXT(_exp, _exp_fixed, _code, _alloc) do {		\
 		_alloc uint64_t const	tmp_array[] = { (_code) };	\
 		_alloc uint64_t const	tmp = (_code);			\
+		uint64_t		fixed;				\
 		(void)_build_bug_on_zero((_code) != (_exp));		\
 		(void)tmp_array;					\
 		(void)tmp;						\
+		fixed = dc_fixup_microcode((_code), addr,		\
+					   variables, num_variables);	\
+		BUG_ON((_exp_fixed) != fixed);				\
 	} while (0)
 
-#define TEST_MC(_exp, _code)	TEST_MC_EXT(_exp, _code, static)
+#define TEST_MC(_exp, _code)	TEST_MC_EXT(_exp, _exp, _code, static)
 
 static int __init __maybe_unused ipu_dc_selftest(void)
 {
@@ -831,18 +835,48 @@ static int __init __maybe_unused ipu_dc_selftest(void)
 		TEST_SYNC = 4,
 	};
 
+	enum {
+		VAR_IDX_0 = 0,
+		VAR_IDX_1 = 1,
+		VAR_IDX_2 = 2,
+	};
+
+	static uint32_t const	variables[] = {
+		[VAR_IDX_0] = 23,
+		[VAR_IDX_1] = 42,
+		[VAR_IDX_2] = 15,
+	};
+	static size_t const	num_variables = ARRAY_SIZE(variables);
+	unsigned int		addr = 42;
+
 	TEST_MC(0x0102468ace0ull,
 		MICROCODE_HLG (0x81234567u));
+
 	TEST_MC(0x0c091a29034ull,
 		MICROCODE_WRG (0x812345,   TEST_WAVE, TEST_GLUE, TEST_SYNC));
+	TEST_MC_EXT(0x373c008000001034ull,
+		    MICROCODE_WRG (variables[VAR_IDX_0], TEST_WAVE, TEST_GLUE, TEST_SYNC),
+		    MICROCODE_WRG (VAR_IDX_0,            TEST_WAVE, TEST_GLUE, TEST_SYNC) |
+		    MICROCODE_X_VAR(24, 15), auto);
+	TEST_MC_EXT(0x373c008000009034ull,
+		    MICROCODE_WRG (variables[VAR_IDX_1], TEST_WAVE, TEST_GLUE, TEST_SYNC),
+		    MICROCODE_WRG (VAR_IDX_1,            TEST_WAVE, TEST_GLUE, TEST_SYNC) |
+		    MICROCODE_X_VAR(24, 15), auto);
+
 	TEST_MC(0x15ffff18000ull,
 		MICROCODE_HLOA(true, 0xffff, TEST_MAP));
 	TEST_MC(0x1dffff19034ull,
 		MICROCODE_WROA(true, 0xffff, TEST_MAP, TEST_WAVE, TEST_GLUE, TEST_SYNC));
 	TEST_MC(0x10ffff18000ull,
 		MICROCODE_HLOD(0xffff, TEST_MAP));
+
 	TEST_MC(0x18ffff19034ull,
 		MICROCODE_WROD(0xffff, TEST_MAP, TEST_WAVE, TEST_GLUE, TEST_SYNC));
+	TEST_MC_EXT(0x243c018666611034ull,
+		    MICROCODE_WROD(0x6666, variables[VAR_IDX_2]-1, TEST_WAVE, TEST_GLUE, TEST_SYNC),
+		    MICROCODE_WROD(0x6666, NO_MAP,                 TEST_WAVE, TEST_GLUE, TEST_SYNC) |
+		    MICROCODE_X_VAR_MAP(VAR_IDX_2), auto);
+
 	TEST_MC(0x11e00018000ull,
 		MICROCODE_HLOAR(true, TEST_MAP));
 	TEST_MC(0x19e00019034ull,
@@ -871,8 +905,18 @@ static int __init __maybe_unused ipu_dc_selftest(void)
 		MICROCODE_MSK(0x1fff));
 	TEST_MC(0x04000001fe0ull,
 		MICROCODE_HMA(0xff));
+
 	TEST_MC(0x02000001fe0ull,
 		MICROCODE_HMA1(0xff));
+	TEST_MC_EXT(0x02000000540ull, MICROCODE_HMA1(addr),
+		    MICROCODE_HMA1(addr), auto);
+	TEST_MC_EXT(0x40000040000002e0ull, MICROCODE_HMA(addr - 23),
+		    MICROCODE_HMA(23) | MICROCODE_X_ADDR(false),
+		    auto);
+	TEST_MC_EXT(0x50000020000002e0ull, MICROCODE_HMA1(addr + 23),
+		    MICROCODE_HMA1(23) | MICROCODE_X_ADDR(true),
+		    auto);
+
 	TEST_MC(0x07000001fe4ull,
 		MICROCODE_BMA(1, 0, 255, TEST_SYNC));
 	TEST_MC(0x06800001fe4ull,
