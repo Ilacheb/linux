@@ -26,6 +26,10 @@
 
 #include "ipu-dc.h"
 
+#ifdef DEBUG
+#  define DC_PARANOID	1
+#endif
+
 #define DC_MAP_CONF_PTR(n)	(0x108 + ((n) & ~0x1) * 2)
 #define DC_MAP_CONF_VAL(n)	(0x144 + ((n) & ~0x1) * 2)
 
@@ -198,9 +202,117 @@ static void dc_write_tmpl(struct ipu_dc_priv *priv, unsigned int addr,
 	writel((code >> 32) & 0xffffffff, priv->dc_tmpl_reg + addr * 8 + 4);
 }
 
+static uint64_t dc_fixup_microcode_var(uint64_t code,
+				       uint32_t const variables[],
+				       size_t num_variables)
+{
+	uint64_t	mask;
+	uint64_t	var;
+	unsigned int	pos;
+	unsigned int	idx;
+	unsigned int	width;
+
+	width = ((code >> MICROCODE_X_FIELD_VAR_WIDTH_sft)
+		 & MICROCODE_X_FIELD_VAR_WIDTH_msk) + 1;
+
+	BUG_ON(width > 32);	/* can not happen... */
+
+	mask  = BIT_ULL(width) - 1;
+	pos   = ((code >> MICROCODE_X_FIELD_VAR_POS_sft)
+		 & MICROCODE_X_FIELD_VAR_POS_msk);
+
+	if (IS_ENABLED(DC_PARANOID) &&
+	    WARN(pos > 41, "bad position %d\n", pos))
+		return code;
+
+	idx = (code >> pos) & mask;
+	if (IS_ENABLED(DC_PARANOID) &&
+	    WARN(idx >= num_variables, "idx %d out of var table (%zu)\n",
+		 idx, num_variables))
+		return code;
+
+	var = variables[idx];
+	/* this is a non static error condition; check it also without
+	 * DC_PARANOID */
+	if (WARN(var & ~mask, "replacement #%zu (%llx) out of range %llx\n",
+		 idx, var, mask))
+		return code;
+
+	code &= ~(mask << pos);
+	code |= var << pos;
+
+	return code;
+}
+
+static uint64_t dc_fixup_microcode_addr(uint64_t code, unsigned int addr)
+{
+	/* TODO: remove hardcoded constants; atm, they are hardcoded
+	 * to the HMA addr field */
+	uint64_t const		mask = 0xff;
+	unsigned int const	pos = 5;
+
+	unsigned int	dir;
+	signed int	offs;
+
+	dir   = (code >> MICROCODE_X_FIELD_ADDR_DIR_sft) & 1u;
+	offs  = (code >> pos) & mask;
+
+	if (dir) {			/* increment address */
+		if (IS_ENABLED(DC_PARANOID) &&
+		    WARN(addr + offs >= IPU_DC_NUM_MICROCODE,
+			 "jump %u+%d too far\n", addr, offs))
+			return code;
+	} else {
+		if (IS_ENABLED(DC_PARANOID) &&
+		    WARN(addr < offs, "jump %u-%d invalid\n", addr, offs))
+			return code;
+
+		offs = -offs;
+	}
+
+	addr += offs;
+
+	code &= ~(mask << pos);
+	code |= addr << pos;
+
+	return code;
+}
+
+static uint64_t dc_fixup_microcode(uint64_t code,
+				   unsigned int addr,
+				   uint32_t const variables[],
+				   size_t num_variables)
+{
+	uint64_t	res;
+
+	switch (code & MICROCODE_X_FIELD_EXT_msk) {
+	case MICROCODE_X_FIELD_EXT_NONE:
+		res = code;
+		break;
+
+	case MICROCODE_X_FIELD_EXT_VAR:
+		res = dc_fixup_microcode_var(code, variables, num_variables);
+		break;
+
+	case MICROCODE_X_FIELD_EXT_ADDR:
+		res = dc_fixup_microcode_addr(code, addr);
+		break;
+
+	default:
+		WARN(IS_ENABLED(DC_PARANOID), "bad code %016llu\n", code);
+		res = code;
+		break;
+	}
+
+	res &= BIT_ULL(42) - 1;
+
+	return res;
+}
+
 static unsigned int dc_write_microcode(struct ipu_dc *dc,
 				       unsigned int addr,
-				       uint64_t const mc[], size_t mc_cnt)
+				       uint64_t const mc[], size_t mc_cnt,
+				       uint32_t const var[], size_t var_cnt)
 {
 	struct ipu_dc_priv	*priv = dc->priv;
 	size_t			i;
@@ -208,11 +320,17 @@ static unsigned int dc_write_microcode(struct ipu_dc *dc,
 	BUG_ON(addr + mc_cnt > IPU_DC_NUM_MICROCODE);
 
 	for (i = 0; i < mc_cnt; ++i) {
-		dev_dbg(dc->priv->dev, "microcode[%03u]=0x%03x_%08x\n", addr+i,
-			(unsigned int)(mc[i] >> 32),
-			(unsigned int)(mc[i] >> 0));
+		uint64_t	code;
 
-		dc_write_tmpl(priv, addr + i, mc[i]);
+		code = dc_fixup_microcode(mc[i], addr + i, var, var_cnt);
+
+		dev_dbg(dc->priv->dev,
+			"microcode[%03u]=0x%03x_%08x -> 0x%03x_%08x\n", addr+i,
+			(unsigned int)(mc[i] >> 32),
+			(unsigned int)(mc[i] >> 0),
+			(unsigned int)(code >> 32), (unsigned int)(code >> 0));
+
+		dc_write_tmpl(priv, addr + i, code);
 	}
 
 	return addr + mc_cnt;
@@ -228,21 +346,33 @@ struct dc_evt_microcode {
 	unsigned int			prio;
 };
 
+struct dc_evt_microcode_info {
+	unsigned int			addr;
+
+	struct dc_evt_microcode const	*code;
+	size_t				num_code;
+
+	uint32_t const			*variables;
+	size_t				num_variables;
+};
+
 static unsigned int ipu_dc_write_evt_microcodes(
-	struct ipu_dc *dc, unsigned int addr,
-	struct dc_evt_microcode const code[], size_t num)
+	struct ipu_dc *dc, struct dc_evt_microcode_info const *info)
 {
 	size_t		i;
+	unsigned int	addr = info->addr;
 
-	for (i = 0; i < num; ++i) {
-		struct dc_evt_microcode const	*c = &code[i];
+	for (i = 0; i < info->num_code; ++i) {
+		struct dc_evt_microcode const	*c = &info->code[i];
 
 		if (!c->set.code) {
 			dc_link_event(dc, i, 0, 0);
 		} else {
 			dc_link_event(dc, i, addr, c->prio);
 			addr = dc_write_microcode(dc, addr,
-						  c->set.code, c->set.num);
+						  c->set.code, c->set.num,
+						  info->variables,
+						  info->num_variables);
 		}
 	}
 
@@ -258,6 +388,74 @@ static unsigned int ipu_dc_write_evt_microcodes(
 int ipu_dc_init_sync(struct ipu_dc *dc, struct ipu_di *di, bool interlaced,
 		u32 bus_format, u32 width)
 {
+	/* indexes of used variables */
+	enum {
+		VAR_IDX_MAP,		/* map calculated from 'bus_format' */
+
+		VAR_IDX_MAX_,
+	};
+
+	/* microcode for interlaced formats */
+	/* TODO: remove hardcoded value for counter #8 */
+	static uint64_t const			microcode_interlaced[] = {
+		MICROCODE_WROD(0, NO_MAP, SYNC_WAVE, 0, 8) |
+		MICROCODE_STOP | MICROCODE_X_VAR_MAP(VAR_IDX_MAP),
+	};
+
+	static struct dc_evt_microcode const	events_interlaced[] = {
+		[DC_EVT_NL] = {
+			.set	= { ARRAY_AND_SIZE(microcode_interlaced) },
+			.prio	= 3,
+		},
+		[DC_EVT_EOL] = {
+			.set	= { ARRAY_AND_SIZE(microcode_interlaced) },
+			.prio	= 2,
+		},
+		[DC_EVT_NEW_DATA] = {
+			.set	= { ARRAY_AND_SIZE(microcode_interlaced) },
+			.prio	= 1,
+		},
+	};
+
+	/* microcode for NL, EOL and NEW-DATA events of non interlaced
+	 * formats */
+	/* TODO: remove hardcoded value for counter #5 (pixel active) */
+	static uint64_t const			microcode_nl[] = {
+		MICROCODE_WROD(0, NO_MAP, SYNC_WAVE, 8, 5) |
+		MICROCODE_STOP | MICROCODE_X_VAR_MAP(VAR_IDX_MAP),
+	};
+	static uint64_t const			microcode_eol[] = {
+		MICROCODE_WROD(0, NO_MAP, SYNC_WAVE, 4, 5) |
+		MICROCODE_X_VAR_MAP(VAR_IDX_MAP),
+		MICROCODE_WRG (0,         NO_WAVE,   0, 0) |
+		MICROCODE_STOP,
+	};
+	static uint64_t const			microcode_new_data[] = {
+		MICROCODE_WROD(0, NO_MAP, SYNC_WAVE, 0, 5) |
+		MICROCODE_STOP | MICROCODE_X_VAR_MAP(VAR_IDX_MAP),
+	};
+
+	static struct dc_evt_microcode const	events_non_interlaced[] = {
+		[DC_EVT_NL] = {
+			.set	= { ARRAY_AND_SIZE(microcode_nl) },
+			.prio	= 3,
+		},
+		[DC_EVT_EOL] = {
+			.set	= { ARRAY_AND_SIZE(microcode_eol) },
+			.prio	= 2,
+		},
+		[DC_EVT_NEW_DATA] = {
+			.set	= { ARRAY_AND_SIZE(microcode_new_data) },
+			.prio	= 1,
+		},
+	};
+
+	uint32_t			variables[VAR_IDX_MAX_];
+	struct dc_evt_microcode_info	info = {
+		.variables	= variables,
+		.num_variables	= ARRAY_SIZE(variables),
+	};
+
 	struct ipu_dc_priv *priv = dc->priv;
 	u32 reg = 0;
 	int map;
@@ -270,69 +468,20 @@ int ipu_dc_init_sync(struct ipu_dc *dc, struct ipu_di *di, bool interlaced,
 		return map;
 	}
 
+	/* field is replaced in a dump way so we have to fix it here */
+	variables[VAR_IDX_MAP] = map + 1;
+
 	if (interlaced) {
-		uint64_t const	microcode[] = {
-			MICROCODE_WROD(0, map, SYNC_WAVE, 0, 8) |
-			MICROCODE_STOP,
-		};
-
-		struct dc_evt_microcode const	evts[] = {
-			[DC_EVT_NL] = {
-				.set	= { ARRAY_AND_SIZE(microcode) },
-				.prio	= 3,
-			},
-			[DC_EVT_EOL] = {
-				.set	= { ARRAY_AND_SIZE(microcode) },
-				.prio	= 2,
-			},
-			[DC_EVT_NEW_DATA] = {
-				.set	= { ARRAY_AND_SIZE(microcode) },
-				.prio	= 1,
-			},
-		};
-
-		ipu_dc_write_evt_microcodes(dc, dc->di ? 1 : 0, ARRAY_AND_SIZE(evts));
+		info.code     = events_interlaced;
+		info.num_code = ARRAY_SIZE(events_interlaced);
+		info.addr     = dc->di ? 1 : 0;
 	} else {
-		uint64_t const	microcode_nl[] = {
-			MICROCODE_WROD(0, map, SYNC_WAVE, 8, 5) |
-			MICROCODE_STOP,
-		};
-
-		uint64_t const	microcode_eol[] = {
-			MICROCODE_WROD(0, map, SYNC_WAVE, 4, 5),
-			MICROCODE_WRG (0,      NO_WAVE,   0, 0) |
-			MICROCODE_STOP,
-		};
-
-		uint64_t const	microcode_new_data[] = {
-			MICROCODE_WROD(0, map, SYNC_WAVE, 0, 5) |
-			MICROCODE_STOP,
-		};
-
-		struct dc_evt_microcode const	evts[] = {
-			[DC_EVT_NL] = {
-				.set	= { ARRAY_AND_SIZE(microcode_nl) },
-				.prio	= 3,
-			},
-			[DC_EVT_EOL] = {
-				.set	= { ARRAY_AND_SIZE(microcode_eol) },
-				.prio	= 2,
-			},
-			[DC_EVT_NEW_DATA] = {
-				.set	= { ARRAY_AND_SIZE(microcode_new_data) },
-				.prio	= 1,
-			},
-		};
-
-		unsigned int		addr;
-
-		if (dc->di)
-			addr = 1;
-		else
-			addr = 5;
-
-		ipu_dc_write_evt_microcodes(dc, addr, ARRAY_AND_SIZE(evts));
+		info.code     = events_non_interlaced;
+		info.num_code = ARRAY_SIZE(events_non_interlaced);
+		info.addr     = dc->di ? 1 : 5;
 	}
+
+	ipu_dc_write_evt_microcodes(dc, &info);
 
 	reg = readl(dc->base + DC_WR_CH_CONF);
 	if (interlaced)

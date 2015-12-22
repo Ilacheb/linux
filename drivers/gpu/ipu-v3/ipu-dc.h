@@ -216,4 +216,79 @@
 	 _build_bug_on_zero((_sync) > 7) |	\
 	 _mfield_sync(_sync))
 
+
+/* our extensions to the microcode
+ *
+ * They allow to keep microcode declarations static and replace variable parts
+ * at runtime.  Basically, they define an area in the official microcode
+ * (which is e.g. the map index or the number of clocks).  At runtime the
+ * (static) value of this area will be read, used as an index of a table with
+ * variable content and replaced with the table's value.
+ */
+
+/* Layouts:
+ *
+ * MICROCODE_X_FIELD_EXT_VAR
+ *
+ *   63      61      56      50       42           0
+ * +---+---+---+--...--+--...--+--....--+--.......--+
+ * | 0   0   1 | WIDTH |  POS  | unused | MICROCODE |
+ * +---+---+---+--...--+--...--+--....--+--.......--+
+ *
+ * - 'WIDTH' is the width of data to be replaced minus 1
+ * - 'POS' is the start position of data to be replaced
+ *
+ * *NOTE*: substitution is done in a dumb way; caller must apply any fixups
+ *         (e.g. adding +1 to the actual value of map or wave fields) by
+ *         himself
+ *
+ *
+ * MICROCODE_X_FIELD_ADDR
+ *
+ *   63      61  60   59              42           0
+ * +---+---+---+-----+--..............--+--.......--+
+ * | 0   1   0 | DIR |     unused       | MICROCODE |
+ * +---+---+---+-----+--..............--+--.......--+
+ *
+ * - 'DIR' == 0 means to increment address
+ * - 'DIR' == 1 means to decrement address
+ * - it is applicable to MICROCODE_HMAx only and assumes fixed position and
+ *   size of the address field
+ * - address field of MICROCODE_HMAx will be an (absolute) offset to the
+ *   address of the actual instruction which is interpreted accordingly the
+ *   DIR field
+ */
+#define MICROCODE_X_FIELD_EXT_NONE	(0ull << 61)
+#define MICROCODE_X_FIELD_EXT_VAR	(1ull << 61)
+#define MICROCODE_X_FIELD_EXT_ADDR	(2ull << 61)
+#define MICROCODE_X_FIELD_EXT_msk	(7ull << 61)
+
+#define MICROCODE_X_FIELD_VAR_WIDTH_sft	(56)
+#define MICROCODE_X_FIELD_VAR_WIDTH_msk	(BIT(5) - 1)
+#define MICROCODE_X_FIELD_VAR_POS_sft	(50)
+#define MICROCODE_X_FIELD_VAR_POS_msk	(BIT(6) - 1)
+
+#define MICROCODE_X_FIELD_ADDR_DIR_sft	(60)
+
+#define MICROCODE_X_VAR(_width, _pos)	\
+	(MICROCODE_X_FIELD_EXT_VAR | \
+	 _build_bug_on_zero((_width) == 0) | \
+	 _mfield((_width)-1, MICROCODE_X_FIELD_VAR_WIDTH_sft, 31) | \
+	 _mfield(_pos, MICROCODE_X_FIELD_VAR_POS_sft, 41))
+
+/* shortcut for 'map' field
+ *
+ * *NOTE*: the corresponding parameter in the microcode macro must be set to
+ *         NO_MAP and the value of the variable must be incremented by one
+ */
+#define MICROCODE_X_VAR_MAP(_var) \
+	(MICROCODE_X_VAR(5, 15) | _mfield(_var, 15, 0x1f))
+
+#define MICROCODE_X_VAR_NCLK(_var) \
+	(MICROCODE_X_VAR(13, 20) | _mfield(_var, 20, 0x1ffff))
+
+#define MICROCODE_X_ADDR(_dir) \
+	(MICROCODE_X_FIELD_EXT_ADDR | \
+	 _mfield(_dir, MICROCODE_X_FIELD_ADDR_DIR_sft, 1))
+
 #endif	/* H_LINUX_DRIVERS_GPU_IPUV3_IPU_DC_H */
