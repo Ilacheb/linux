@@ -1230,6 +1230,9 @@ static void v4l_fill_fmtdesc(struct v4l2_fmtdesc *fmt)
 	case V4L2_SDR_FMT_CS14LE:	descr = "Complex S14LE"; break;
 	case V4L2_SDR_FMT_RU12LE:	descr = "Real U12LE"; break;
 
+	case V4L2_PIX_FMT_IPU_GENERIC_8:  descr = "i.MX6 generic 8 bit data"; break;
+	case V4L2_PIX_FMT_IPU_GENERIC_16: descr = "i.MX6 generic 16 bit data"; break;
+
 	default:
 		/* Compressed formats */
 		flags = V4L2_FMT_FLAG_COMPRESSED;
