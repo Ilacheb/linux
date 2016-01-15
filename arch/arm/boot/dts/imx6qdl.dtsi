@@ -1244,6 +1244,13 @@
 					remote-endpoint = <&lvds1_mux_1>;
 				};
 			};
+
+			ipu1_scaler: port@4 {
+				compatible = "fsl,imx-ipuv3-scaler";
+				#address-cells = <1>;
+				#size-cells = <0>;
+				reg = <4>;
+			};
 		};
 	};
 };
