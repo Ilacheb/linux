@@ -167,10 +167,12 @@
 			resets = <&src 4>;
 
 			ipu2_csi0: port@0 {
+				compatible = "fsl,imx-ipuv3-camera";
 				reg = <0>;
 			};
 
 			ipu2_csi1: port@1 {
+				compatible = "fsl,imx-ipuv3-camera";
 				reg = <1>;
 			};
 
