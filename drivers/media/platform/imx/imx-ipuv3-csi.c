@@ -1831,10 +1831,17 @@ static int ipucsi_remove(struct platform_device *pdev)
 	return rc;
 }
 
+static const struct of_device_id ipucsi_dt_ids[] = {
+	{ .compatible = "fsl,imx-ipuv3-camera", },
+	{ /* sentinel */ }
+};
+MODULE_DEVICE_TABLE(of, ipucsi_dt_ids);
+
 static struct platform_driver ipucsi_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
 		.name = DRIVER_NAME,
+		.of_match_table = ipucsi_dt_ids,
 	},
 	.probe = ipucsi_probe,
 	.remove = ipucsi_remove,
