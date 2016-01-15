@@ -1055,23 +1055,25 @@ static int ipu_add_client_devices(struct ipu_soc *ipu, unsigned long ipu_base)
 	for (i = 0; i < ARRAY_SIZE(client_reg); i++) {
 		const struct ipu_platform_reg *reg = &client_reg[i];
 		struct platform_device *pdev;
+		struct device_node *np;
+
+		np = of_graph_get_port_by_id(dev->of_node, i);
+		if (!of_device_is_available(np)) {
+			dev_dbg(dev, "skipping port@%d node (%s)\n", i,
+				reg->name);
+			continue;
+		}
 
 		pdev = platform_device_alloc(reg->name, id++);
 		if (!pdev) {
 			ret = -ENOMEM;
+			of_node_put(np);
 			goto err_register;
 		}
 
 		pdev->dev.parent = dev;
-
 		/* Associate subdevice with the corresponding port node */
-		pdev->dev.of_node = of_graph_get_port_by_id(dev->of_node, i);
-		if (!pdev->dev.of_node) {
-			dev_err(dev, "missing port@%d node in %s\n", i,
-				dev->of_node->full_name);
-			ret = -ENODEV;
-			goto err_register;
-		}
+		pdev->dev.of_node = np;
 
 		if (reg->reg_offset) {
 			unsigned long	start =
