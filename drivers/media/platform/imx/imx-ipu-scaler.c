@@ -828,6 +828,12 @@ static int ipu_scale_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static const struct of_device_id ipu_scale_dt_ids[] = {
+	{ .compatible = "fsl,imx-ipuv3-scaler", },
+	{ /* sentinel */ }
+};
+MODULE_DEVICE_TABLE(of, ipu_scale_dt_ids);
+
 static const struct platform_device_id ipu_scale_id[] = {
 	{ "imx-ipuv3-scaler" },
 	{}
@@ -839,6 +845,7 @@ static struct platform_driver ipu_scale_pdrv = {
 	.remove		= ipu_scale_remove,
 	.driver		= {
 		.name	= "imx-ipuv3-scaler",
+		.of_match_table	= ipu_scale_dt_ids,
 	},
 };
 
