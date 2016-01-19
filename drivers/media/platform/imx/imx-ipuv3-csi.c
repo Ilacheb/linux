@@ -266,7 +266,6 @@ struct ipucsi {
 	struct ipucsi_format		ipucsifmt;
 	struct v4l2_ctrl_handler	ctrls;
 	struct v4l2_ctrl_handler	ctrls_vdev;
-	struct v4l2_ctrl		*ctrl_test_pattern;
 	struct media_pad		media_pad;
 	struct media_pipeline		pipe;
 
@@ -276,6 +275,8 @@ struct ipucsi {
 	struct ipu_media_link		*link;
 	struct v4l2_fh			fh;
 	bool				paused;
+
+	unsigned int			test_pattern;
 };
 
 static struct ipucsi_buffer *to_ipucsi_vb(struct vb2_buffer *vb)
@@ -632,7 +633,7 @@ out:
 
 static struct ipucsi_format const *ipucsi_current_format(struct ipucsi *ipucsi)
 {
-	if (ipucsi->ctrl_test_pattern->val)
+	if (ipucsi->test_pattern)
 		return &ipucsi_format_testpattern;
 	else
 		return &ipucsi->ipucsifmt;
@@ -1084,7 +1085,7 @@ static int ipucsi_enum_fmt(struct file *file, void *priv,
 {
 	struct ipucsi *ipucsi = video_drvdata(file);
 
-	if (ipucsi->ctrl_test_pattern->val) {
+	if (ipucsi->test_pattern) {
 		if (f->index)
 			return -EINVAL;
 		strlcpy(f->description, ipucsi_format_testpattern.name,
@@ -1489,9 +1490,14 @@ static const struct v4l2_ioctl_ops ipucsi_capture_ioctl_ops = {
 
 static int ipucsi_subdev_s_ctrl(struct v4l2_ctrl *ctrl)
 {
+	struct ipucsi 	*ipucsi =
+		container_of(ctrl->handler, struct ipucsi, ctrls);
+
 	switch (ctrl->id) {
 	case V4L2_CID_TEST_PATTERN:
+		ipucsi->test_pattern = ctrl->val;
 		break;
+
 	default:
 		return -EINVAL;
 	}
@@ -1510,18 +1516,29 @@ static const char * const ipucsi_test_pattern_menu[] = {
 	"Checkerboard-blue",
 };
 
+static struct v4l2_ctrl_config const	ipucsi_ctrls[] = {
+	{
+		.ops		= &ipucsi_subdev_ctrl_ops,
+		.id		= V4L2_CID_TEST_PATTERN,
+		.type		= V4L2_CTRL_TYPE_MENU,
+		.name		= "test_pattern",
+		.min		= 0,
+		.max		= ARRAY_SIZE(ipucsi_test_pattern_menu) - 1,
+		.qmenu		= ipucsi_test_pattern_menu,
+	}
+};
+
 static int ipucsi_create_controls(struct ipucsi *ipucsi)
 {
 	struct v4l2_ctrl_handler *handler = &ipucsi->ctrls;
+	size_t			i;
 
-	v4l2_ctrl_handler_init(handler, 1);
+	v4l2_ctrl_handler_init(handler, ARRAY_SIZE(ipucsi_ctrls));
 
-	ipucsi->ctrl_test_pattern = v4l2_ctrl_new_std_menu_items(handler,
-			&ipucsi_subdev_ctrl_ops, V4L2_CID_TEST_PATTERN,
-			ARRAY_SIZE(ipucsi_test_pattern_menu) - 1, 0, 0,
-			ipucsi_test_pattern_menu);
+	for (i = 0; i < ARRAY_SIZE(ipucsi_ctrls); ++i)
+		v4l2_ctrl_new_custom(handler, &ipucsi_ctrls[i], NULL);
 
-	return ipucsi->ctrl_test_pattern ? 0 : -ENOMEM;
+	return handler->error ? handler->error : 0;
 }
 
 static int ipucsi_subdev_init(struct ipucsi *ipucsi, struct device_node *node)
