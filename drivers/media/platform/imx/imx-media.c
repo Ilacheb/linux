@@ -50,16 +50,44 @@ static int ipu_media_bound(struct v4l2_async_notifier *notifier,
 		container_of(notifier->v4l2_dev, struct ipu_media_controller,
 			     v4l2_dev);
 	struct device_node *rp;
+	struct property *prop;
+	const __be32 *p;
+	uint32_t link_num;
 	uint32_t portno;
 	int ret;
+	bool have_links = false;
 
 	rp = of_graph_get_remote_port(link->endpoint);
 	if (of_property_read_u32(rp, "reg", &portno) < 0)
 		portno = 0;
+
+	ret = 0;
+	of_property_for_each_u32(rp, "links", prop, p, link_num) {
+		unsigned long		flags = link->media_link_flags;
+
+		v4l2_info(link->sd, "creating link from pad %u\n", link_num);
+
+		flags &= ~(MEDIA_LNK_FL_IMMUTABLE | MEDIA_LNK_FL_ENABLED);
+
+		if (link_num == portno)
+			flags |= MEDIA_LNK_FL_ENABLED;
+
+		ret = media_entity_create_link(&sd->entity, link_num,
+					       &link->sd->entity, link->padno,
+					       flags);
+		if (ret)
+			break;
+
+		have_links = true;
+	}
+
 	of_node_put(rp);
 
-	ret = media_entity_create_link(&sd->entity, portno, &link->sd->entity,
-				       link->padno, link->media_link_flags);
+	if (!ret && !have_links)
+		ret = media_entity_create_link(&sd->entity, portno,
+					       &link->sd->entity, link->padno,
+					       link->media_link_flags);
+
 	if (ret)
 		return ret;
 
