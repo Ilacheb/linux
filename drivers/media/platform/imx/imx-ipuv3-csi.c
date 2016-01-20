@@ -296,6 +296,9 @@ static int ipu_csi_get_mbus_config(struct ipucsi *ipucsi,
 	 * to the CSI subdev sink pad.
 	 */
 	pad = media_entity_remote_pad(&ipucsi->subdev_pad[0]);
+	if (!pad)
+		return -EPIPE;
+
 	sd = media_entity_to_v4l2_subdev(pad->entity);
 	ret = v4l2_subdev_call(sd, video, g_mbus_config, config);
 	if (ret == -ENOIOCTLCMD) {
@@ -1563,8 +1566,8 @@ static int ipucsi_subdev_init(struct ipucsi *ipucsi, struct device_node *node)
 
 	ipucsi->subdev.flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
 
-	ipucsi->subdev_pad[0].flags = MEDIA_PAD_FL_SINK;
-	ipucsi->subdev_pad[1].flags = MEDIA_PAD_FL_SOURCE;
+	ipucsi->subdev_pad[0].flags = MEDIA_PAD_FL_SINK | MEDIA_PAD_FL_MUST_CONNECT;
+	ipucsi->subdev_pad[1].flags = MEDIA_PAD_FL_SOURCE | MEDIA_PAD_FL_MUST_CONNECT;
 
 	ret = media_entity_init(&ipucsi->subdev.entity, 2, ipucsi->subdev_pad, 0);
 	if (ret < 0)
@@ -1648,7 +1651,7 @@ static int ipucsi_async_init(struct ipucsi *ipucsi, struct device_node *node)
 		return 0;
 
 	ipucsi->link = ipu_media_entity_create_link(&ipucsi->subdev, 0, rp,
-			MEDIA_LNK_FL_IMMUTABLE | MEDIA_LNK_FL_ENABLED);
+			MEDIA_LNK_FL_ENABLED);
 
 	if (IS_ERR(ipucsi->link)) {
 		rc = PTR_ERR(ipucsi->link);
