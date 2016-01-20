@@ -115,6 +115,16 @@ static struct ipu_fmt ipu_fmt_raw[] = {
 		.fourcc = V4L2_PIX_FMT_IPU_GENERIC_16,
 		.name = "Generic 16",
 		.bytes_per_pixel = 2,
+	}, {
+		/* MEDIA_BUS_FMT_UYVY8_1X16 is interpreted as raw by i.MX6 */
+		.fourcc = V4L2_PIX_FMT_UYVY,
+		.name = "4:2:2, packed, UYVY",
+		.bytes_per_pixel = 2,
+	}, {
+		/* MEDIA_BUS_FMT_YUYV8_1X16 is interpreted as raw by i.MX6 */
+		.fourcc = V4L2_PIX_FMT_YUYV,
+		.name = "4:2:2, packed, YUYV",
+		.bytes_per_pixel = 2,
 	},
 };
 
