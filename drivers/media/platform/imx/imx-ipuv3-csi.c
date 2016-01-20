@@ -349,6 +349,12 @@ static int ipu_csi_init_interface_local(struct ipucsi *ipucsi)
 {
 	struct v4l2_mbus_config		mbus_config;
 	int				rc;
+	bool				do_rotate =
+		v4l2_ctrl_find(&ipucsi->ctrls, V4L2_CID_ROTATE)->val;
+	bool				do_hflip =
+		v4l2_ctrl_find(&ipucsi->ctrls, V4L2_CID_HFLIP)->val;
+	bool				do_vflip =
+		v4l2_ctrl_find(&ipucsi->ctrls, V4L2_CID_VFLIP)->val;
 
 	rc = ipu_csi_get_mbus_config(ipucsi, &mbus_config);
 	if (rc) {
@@ -363,6 +369,17 @@ static int ipu_csi_init_interface_local(struct ipucsi *ipucsi)
 		dev_warn(ipucsi->dev, "failed to initialize iface: %d\n",
 			 rc);
 		goto out;
+	}
+
+	if (do_rotate || do_hflip || do_vflip) {
+		enum ipu_rotate_mode	mode = 0;
+
+		mode |= do_vflip  ? BIT(0) : 0;
+		mode |= do_hflip  ? BIT(1) : 0;
+		mode |= do_rotate ? BIT(2) : 0;
+
+		ipu_cpmem_set_block_mode(ipucsi->ipuch);
+		ipu_cpmem_set_rotation(ipucsi->ipuch, mode);
 	}
 
 	rc = ipu_csi_set_dest(ipucsi->csi, IPU_CSI_DEST_IDMAC);
@@ -1501,6 +1518,11 @@ static int ipucsi_subdev_s_ctrl(struct v4l2_ctrl *ctrl)
 		ipucsi->test_pattern = ctrl->val;
 		break;
 
+	case V4L2_CID_ROTATE:
+	case V4L2_CID_HFLIP:
+	case V4L2_CID_VFLIP:
+		break;
+
 	default:
 		return -EINVAL;
 	}
@@ -1519,16 +1541,45 @@ static const char * const ipucsi_test_pattern_menu[] = {
 	"Checkerboard-blue",
 };
 
+static const char * const ipucsi_rotate_menu[] = {
+	"normal",
+	"90 degree clockwise",
+};
+
 static struct v4l2_ctrl_config const	ipucsi_ctrls[] = {
 	{
 		.ops		= &ipucsi_subdev_ctrl_ops,
 		.id		= V4L2_CID_TEST_PATTERN,
 		.type		= V4L2_CTRL_TYPE_MENU,
-		.name		= "test_pattern",
+		.name		= "Test Pattern",
 		.min		= 0,
 		.max		= ARRAY_SIZE(ipucsi_test_pattern_menu) - 1,
 		.qmenu		= ipucsi_test_pattern_menu,
-	}
+	}, {
+		.ops		= &ipucsi_subdev_ctrl_ops,
+		.id		= V4L2_CID_ROTATE,
+		.type		= V4L2_CTRL_TYPE_MENU,
+		.name		= "Rotate",
+		.min		= 0,
+		.max		= ARRAY_SIZE(ipucsi_rotate_menu) - 1,
+		.qmenu		= ipucsi_rotate_menu,
+	}, {
+		.ops		= &ipucsi_subdev_ctrl_ops,
+		.id		= V4L2_CID_HFLIP,
+		.type		= V4L2_CTRL_TYPE_BOOLEAN,
+		.name		= "Horizontal Flip",
+		.min		= 0,
+		.max		= 1,
+		.step		= 1,
+	}, {
+		.ops		= &ipucsi_subdev_ctrl_ops,
+		.id		= V4L2_CID_VFLIP,
+		.type		= V4L2_CTRL_TYPE_BOOLEAN,
+		.name		= "Vertical Flip",
+		.min		= 0,
+		.max		= 1,
+		.step		= 1,
+	},
 };
 
 static int ipucsi_create_controls(struct ipucsi *ipucsi)
