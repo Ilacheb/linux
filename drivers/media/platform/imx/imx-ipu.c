@@ -201,7 +201,9 @@ int ipu_try_fmt(struct file *file, void *fh,
 	if (!fmt)
 		return -EINVAL;
 
-	f->fmt.pix.bytesperline = f->fmt.pix.width * fmt->bytes_per_pixel;
+	f->fmt.pix.bytesperline = ipu_get_stride(&f->fmt.pix,
+						 fmt->bytes_per_pixel);
+
 	f->fmt.pix.sizeimage = f->fmt.pix.bytesperline * f->fmt.pix.height;
 	if (fmt->fourcc == V4L2_PIX_FMT_YUV420 ||
 	    fmt->fourcc == V4L2_PIX_FMT_YVU420 ||

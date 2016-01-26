@@ -40,4 +40,17 @@ int ipu_g_fmt(struct v4l2_format *f, struct v4l2_pix_format *pix);
 int ipu_enum_framesizes(struct file *file, void *fh,
 			struct v4l2_frmsizeenum *fsize);
 
+static unsigned int __used ipu_get_stride(struct v4l2_pix_format const *fmt,
+					  unsigned int bytes_per_pixel)
+{
+	unsigned int	res;
+
+	res = fmt->width * bytes_per_pixel;
+
+	if (fmt->bytesperline && fmt->bytesperline > res)
+		res = ALIGN(fmt->bytesperline, 2);
+
+	return res;
+}
+
 #endif /* __MEDIA_IMX_IPU_H */

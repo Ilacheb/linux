@@ -674,7 +674,8 @@ static int ipucsi_videobuf_setup(struct vb2_queue *vq, const void *fmt_,
 	if (!fmt)
 		fmt = &ipucsi->format;
 
-	bytes_per_line = fmt->fmt.pix.width * ipucsifmt->bytes_per_pixel;
+	bytes_per_line = ipu_get_stride(&fmt->fmt.pix,
+					ipucsifmt->bytes_per_pixel);
 
 	dev_dbg(ipucsi->dev, "bytes: %d x: %d y: %d",
 			bytes_per_line, fmt->fmt.pix.width, fmt->fmt.pix.height);
@@ -805,7 +806,7 @@ static int ipucsi_videobuf_start_streaming(struct vb2_queue *vq, unsigned int co
 		/*
 		 * raw formats. We can only pass them through to memory
 		 */
-		ipu_cpmem_set_stride(ipuch, xres * ipucsifmt->bytes_per_pixel);
+		ipu_cpmem_set_stride(ipuch, ipucsi->format.fmt.pix.bytesperline);
 		ret = ipu_cpmem_set_format_passthrough(
 			ipuch, ipucsifmt->bytes_per_sample * 8);
 		if (ret) {
@@ -822,18 +823,17 @@ static int ipucsi_videobuf_start_streaming(struct vb2_queue *vq, unsigned int co
 		u32 fourcc = ipucsi->format.fmt.pix.pixelformat;
 		ret = 0;
 
+		ipu_cpmem_set_stride(ipuch, ipucsi->format.fmt.pix.bytesperline);
+
 		switch (fourcc) {
 		case V4L2_PIX_FMT_RGB32:
-			ipu_cpmem_set_stride(ipuch, xres * 4);
 			ret = ipu_cpmem_set_fmt(ipuch, fourcc);
 			break;
 		case V4L2_PIX_FMT_UYVY:
 		case V4L2_PIX_FMT_YUYV:
-			ipu_cpmem_set_stride(ipuch, xres * 2);
 			ipu_cpmem_set_yuv_interleaved(ipuch, fourcc);
 			break;
 		case V4L2_PIX_FMT_YUV420:
-			ipu_cpmem_set_stride(ipuch, xres);
 			ipu_cpmem_set_yuv_planar(ipuch, V4L2_PIX_FMT_YUV420, xres, yres);
 			break;
 		default:
@@ -1024,7 +1024,7 @@ static int ipucsi_try_fmt(struct file *file, void *fh,
 			      &f->fmt.pix.height, 128,
 			      ipucsi->format_mbus[1].height, 1, 0);
 
-	f->fmt.pix.bytesperline = f->fmt.pix.width * bytes_per_pixel;
+	f->fmt.pix.bytesperline = ipu_get_stride(&f->fmt.pix, bytes_per_pixel);
 	f->fmt.pix.sizeimage = f->fmt.pix.bytesperline * f->fmt.pix.height;
 
 	if ((in == V4L2_FIELD_SEQ_TB && out == V4L2_FIELD_INTERLACED_TB) ||
