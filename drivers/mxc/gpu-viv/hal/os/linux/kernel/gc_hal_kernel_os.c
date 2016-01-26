@@ -392,12 +392,12 @@ _QueryProcessPageTable(
 
     if (!pte_present(*pte))
     {
-        pte_unmap(*pte);
+        pte_unmap(pte);
         return gcvSTATUS_NOT_FOUND;
     }
 
     *Address = (pte_pfn(*pte) << PAGE_SHIFT) | (logical & ~PAGE_MASK);
-    pte_unmap(*pte);
+    pte_unmap(pte);
 
     return gcvSTATUS_OK;
 }
