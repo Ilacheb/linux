@@ -1298,14 +1298,6 @@ int ipu_image_convert_run(struct ipu_soc *ipu, struct ipu_image *in,
 	for (i = 0; i < num_tiles; i++) {
 		ctx[i].in.phys0 = in->phys0;
 		ctx[i].out.phys0 = out->phys0;
-
-		ctx[i].in.do_rotate = in->do_rotate;
-		ctx[i].in.do_hflip  = in->do_hflip;
-		ctx[i].in.do_vflip  = in->do_vflip;
-
-		ctx[i].out.do_rotate = out->do_rotate;
-		ctx[i].out.do_hflip  = out->do_hflip;
-		ctx[i].out.do_vflip  = out->do_vflip;
 	}
 	ctx[num_tiles - 1].complete = complete;
 	ctx[num_tiles - 1].complete_context = complete_context;
