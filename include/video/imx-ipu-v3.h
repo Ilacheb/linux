@@ -191,6 +191,9 @@ struct ipu_image {
 	struct v4l2_rect rect;
 	dma_addr_t phys0;
 	dma_addr_t phys1;
+	bool do_rotate;
+	bool do_hflip;
+	bool do_vflip;
 };
 
 void ipu_cpmem_zero(struct ipuv3_channel *ch);

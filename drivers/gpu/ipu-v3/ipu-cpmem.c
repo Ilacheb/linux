@@ -811,6 +811,17 @@ int ipu_cpmem_set_image(struct ipuv3_channel *ch, struct ipu_image *image)
 		return -EINVAL;
 	}
 
+	if (image->do_rotate || image->do_hflip || image->do_vflip) {
+		enum ipu_rotate_mode	mode = 0;
+
+		mode |= image->do_vflip  ? BIT(0) : 0;
+		mode |= image->do_hflip  ? BIT(1) : 0;
+		mode |= image->do_rotate ? BIT(2) : 0;
+
+		ipu_cpmem_set_block_mode(ch);
+		ipu_cpmem_set_rotation(ch, mode);
+	}
+
 	ipu_cpmem_set_buffer(ch, 0, image->phys0 + offset);
 	ipu_cpmem_set_buffer(ch, 1, image->phys1 + offset);
 

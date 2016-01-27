@@ -165,7 +165,7 @@ static void ipu_scaler_work(struct work_struct *work)
 	struct vb2_v4l2_buffer *src_buf, *dst_buf;
 	struct ipu_scale_q_data *q_data;
 	struct v4l2_pix_format *pix;
-	struct ipu_image in, out;
+	struct ipu_image in = {}, out = {};
 	int err = -ETIMEDOUT;
 	unsigned long flags;
 
