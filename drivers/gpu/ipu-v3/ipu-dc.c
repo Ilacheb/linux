@@ -431,7 +431,7 @@ int ipu_dc_init_sync(struct ipu_dc *dc, struct ipu_di *di, bool interlaced,
 		MICROCODE_STOP,
 	};
 	static uint64_t const			microcode_new_data[] = {
-		MICROCODE_WROD(0, NO_MAP, SYNC_WAVE, 0, 5),
+		MICROCODE_WROD(0, NO_MAP, SYNC_WAVE, 0, 5) |
 		MICROCODE_STOP | MICROCODE_X_VAR_MAP(VAR_IDX_MAP),
 	};
 
